@@ -2,6 +2,7 @@ import { BoardStore } from "../board/store.ts";
 import { ActivityEvent, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
+import { GoalScheduler } from "./goal_scheduler.ts";
 import { PROMPTS } from "../board/prompts.ts";
 
 export interface GoalForgeWorkerOptions {
@@ -35,14 +36,44 @@ export class GoalForgeWorker {
     return await this.runTask(task.id);
   }
 
-  async runQueue(limit = Number.POSITIVE_INFINITY): Promise<Task[]> {
+  async runQueue(limit = Number.POSITIVE_INFINITY, maxConcurrency = 2): Promise<Task[]> {
     const completed: Task[] = [];
     while (completed.length < limit) {
-      const task = this.store.findDispatchableTask();
-      if (!task) {
+      const tasks = this.store.listDispatchableTasks(20);
+      if (!tasks.length) {
         break;
       }
-      completed.push(await this.runTask(task.id));
+      const scheduler = new GoalScheduler(this.root, {
+        createCodexClient: this.createCodexClient,
+        onEvent: (event) => {
+          this.emit(this.store.appendEvent(null, null, event.role, event.kind, event.message));
+        },
+      });
+      const remaining = limit === Number.POSITIVE_INFINITY
+        ? maxConcurrency
+        : limit - completed.length;
+      const decision = await scheduler.selectBatch(tasks, Math.min(maxConcurrency, remaining));
+      this.emit(
+        this.store.appendEvent(
+          null,
+          null,
+          "scheduler",
+          "batch",
+          `Running ${decision.taskIds.join(", ")}. ${decision.notes}`,
+        ),
+      );
+      const results = await Promise.allSettled(
+        decision.taskIds.map((taskId) => this.runTask(taskId)),
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          completed.push(result.value);
+        }
+      }
+      if (results.every((result) => result.status === "rejected")) {
+        const first = results[0] as PromiseRejectedResult;
+        throw first.reason;
+      }
     }
     return completed;
   }

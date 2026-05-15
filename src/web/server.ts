@@ -105,7 +105,25 @@ export function startServer(
 
         if (url.pathname === "/api/goals" && request.method === "POST") {
           const body = await readJson<{ text?: string }>(request);
-          const result = store.createGoal(body.text ?? "");
+          const text = body.text?.trim() ?? "";
+          if (!text) {
+            return json({ error: "Goal text is required." }, 400);
+          }
+          const planner = new GoalPlanner(normalizedRoot, {
+            createCodexClient: options.createCodexClient,
+            onEvent: (event) => {
+              const activity = store.appendEvent(
+                null,
+                null,
+                event.role,
+                event.kind,
+                event.message,
+              );
+              broadcastActivity(activity);
+            },
+          });
+          const drafts = await planner.plan(text);
+          const result = store.createGoalWithTasks(text, drafts);
           broadcastBoard();
           return json(result, 201);
         }

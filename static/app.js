@@ -10,9 +10,10 @@ const connectionEl = document.querySelector("#connection");
 const goalTextEl = document.querySelector("#goalText");
 
 document.querySelector("#addGoal").addEventListener("click", addGoal);
-document.querySelector("#planGoal").addEventListener("click", planGoal);
-document.querySelector("#runNext").addEventListener("click", () => postJson("/api/run", {}));
-document.querySelector("#runQueue").addEventListener("click", () => postJson("/api/run-queue", {}));
+document.querySelector("#startGoalforge").addEventListener(
+  "click",
+  () => postJson("/api/run-queue", {}),
+);
 goalTextEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") addGoal();
 });
@@ -50,14 +51,6 @@ async function addGoal() {
   if (!text) return;
   goalTextEl.value = "";
   await postJson("/api/goals", { text });
-  await loadBoard();
-}
-
-async function planGoal() {
-  const text = goalTextEl.value.trim();
-  if (!text) return;
-  goalTextEl.value = "";
-  await postJson("/api/goals/plan", { text }).catch((error) => alert(error.message));
   await loadBoard();
 }
 

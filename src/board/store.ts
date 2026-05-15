@@ -109,7 +109,7 @@ export class BoardStore {
     this.appendEvent(
       tasks[0]?.id ?? null,
       null,
-      "planner",
+      "compiler",
       "goal",
       `Created ${tasks.length} task${tasks.length === 1 ? "" : "s"} from ${goalId}.`,
     );
@@ -150,6 +150,15 @@ export class BoardStore {
       LIMIT 1
     `).get() as SqlRow | undefined;
     return row ? taskFromRow(row) : null;
+  }
+
+  listDispatchableTasks(limit = 20): Task[] {
+    return (this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE status IN ('ready', 'inbox')
+      ORDER BY priority DESC, created_at ASC
+      LIMIT ?
+    `).all(limit) as SqlRow[]).map(taskFromRow);
   }
 
   hasRunningRun(taskId: string): boolean {
@@ -466,7 +475,7 @@ function defaultTaskDraft(text: string): TaskDraft {
     description: text.trim(),
     priority: 100,
     acceptanceCriteria: defaultAcceptance(text),
-    workpad: "Created from /goal intake. Awaiting worker plan.",
+    workpad: "Created from /goal intake. Awaiting worker handoff.",
   };
 }
 

@@ -107,6 +107,25 @@ class TestCodexClient implements CodexClient {
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    if (_input.title === "GoalForge scheduler") {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: JSON.stringify({
+          taskIds: ["TASK-1", "TASK-2"],
+          notes: "Both tasks are independent in this test.",
+        }),
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-scheduler-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     await Deno.writeTextFile(
       `${session.cwd}/codex-output.txt`,
       "test Codex implementation output\n",

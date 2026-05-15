@@ -24,7 +24,8 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: "Run through the GUI path" }),
     }).then((response) => response.json());
-    assertEquals(create.task.id, "TASK-1");
+    assertEquals(create.tasks.length, 1);
+    assertEquals(create.tasks[0].id, "TASK-1");
 
     const runResponse = await fetch(`${server.url}/api/run`, {
       method: "POST",
@@ -61,7 +62,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: "Plan through the GUI path" }),
     }).then((response) => response.json());
-    assertEquals(planned.tasks.length, 2);
+    assertEquals(planned.tasks.length, 1);
   } finally {
     server.shutdown();
     await server.finished.catch(() => {});
@@ -92,28 +93,19 @@ class TestCodexClient implements CodexClient {
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
-    if (_input.title === "GoalForge planner") {
+    if (_input.title === "GoalForge goal compiler") {
       this.onEvent({
         taskId: null,
         runId: null,
         role: "codex",
         kind: "agent",
-        message: JSON.stringify([
-          {
-            title: "Inspect planned work",
-            description: "Inspect the project before implementation.",
-            acceptanceCriteria: "- Inspection notes are recorded.",
-            priority: 200,
-            workpad: "Planner task one.",
-          },
-          {
-            title: "Implement planned work",
-            description: "Implement the requested planned work.",
-            acceptanceCriteria: "- Implementation is validated.",
-            priority: 100,
-            workpad: "Planner task two.",
-          },
-        ]),
+        message: JSON.stringify({
+          title: "Implement compiled goal",
+          prompt: "Inspect the project, implement the requested goal, and validate the result.",
+          acceptanceCriteria: "- Implementation is validated.",
+          priority: 200,
+          workpad: "Compiled prompt task.",
+        }),
       });
       return {
         threadId: session.threadId,
@@ -134,6 +126,25 @@ class TestCodexClient implements CodexClient {
       return {
         threadId: session.threadId,
         turnId: "turn-review-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
+    if (_input.title === "GoalForge scheduler") {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: JSON.stringify({
+          taskIds: ["TASK-3"],
+          notes: "Run the next independent planned task.",
+        }),
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-scheduler-test",
         status: "completed",
         completed: true,
       };

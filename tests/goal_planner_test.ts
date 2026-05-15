@@ -20,3 +20,17 @@ Deno.test("planner parser accepts fenced JSON task lists", () => {
   assertEquals(tasks[0].title, "Add queue controls");
   assertEquals(tasks[0].priority, 250);
 });
+
+Deno.test("planner parser accepts one compiled prompt object", () => {
+  const tasks = parsePlannerResponse(JSON.stringify({
+    title: "Build activity feed",
+    prompt: "Implement an activity feed and validate it.",
+    acceptanceCriteria: "- Feed renders.\n- Validation passes.",
+    priority: 900,
+    workpad: "Independent feature.",
+  }));
+
+  assertEquals(tasks.length, 1);
+  assertEquals(tasks[0].description, "Implement an activity feed and validate it.");
+  assertEquals(tasks[0].workpad, "Independent feature.");
+});

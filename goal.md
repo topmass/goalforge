@@ -59,6 +59,7 @@ Core product requirements:
 
 - persistent task workpad
 - status routing
+- compile a user's rough feature request into one strong Codex-ready prompt under 4,000 characters
 - reproduce first
 - acceptance criteria
 - validation before review
@@ -69,7 +70,7 @@ Core product requirements:
 15. Adapt SwarmForge's benefits:
 
 - layered constitution/project/engineering/workflow prompt structure
-- role-specific worker/reviewer/planner prompts
+- role-specific compiler/worker/reviewer prompts
 - work only in assigned worktree
 - explicit handoff format with branch, commit, files changed, validation evidence
 - queued messages/events when an agent is busy
@@ -82,12 +83,14 @@ Suggested first vertical slice:
 - goalforge init creates .goalforge/, SQLite DB, config, prompt templates, and required ignored
   runtime folders. If the folder is not yet a git repository, it bootstraps one and creates a
   baseline commit so worktrees can see the project.
-- goalforge goal creates a goal and initial task on the board.
+- goalforge goal uses Codex to compile the user's rough request into one worker prompt and creates
+  an initial task on the board.
 - goalforge serve starts the daemon and GUI.
 - GUI displays the kanban board and command center.
 - goalforge run or a GUI button starts a real Codex worker that streams activity into the command
   center and moves a task through In Progress -> Review.
-- goalforge run --all or the GUI Run Queue action processes queued tasks one at a time.
+- goalforge run or the GUI Start GoalForge action asks the scheduler which queued goals can run
+  together and processes a safe batch.
 - goalforge review or the GUI Review action starts a Codex reviewer and appends review evidence to
   the task before merge.
 - Codex App Server client exists behind an interface and is the default production worker path.

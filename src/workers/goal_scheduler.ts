@@ -1,0 +1,125 @@
+import { ActivityEvent, Task } from "../board/types.ts";
+import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+
+export interface ScheduleDecision {
+  taskIds: string[];
+  notes: string;
+}
+
+export interface GoalSchedulerOptions {
+  onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  createCodexClient?: (
+    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+  ) => CodexClient;
+}
+
+export class GoalScheduler {
+  readonly createCodexClient: (
+    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+  ) => CodexClient;
+
+  constructor(private readonly root: string, private readonly options: GoalSchedulerOptions = {}) {
+    this.createCodexClient = options.createCodexClient ??
+      ((onEvent) => new CodexAppServerClient(onEvent));
+  }
+
+  async selectBatch(tasks: Task[], maxConcurrency: number): Promise<ScheduleDecision> {
+    const candidates = tasks.slice(0, Math.max(1, maxConcurrency));
+    if (tasks.length <= 1 || maxConcurrency <= 1) {
+      return {
+        taskIds: candidates.map((task) => task.id),
+        notes: "Only one dispatchable task or concurrency is limited to one.",
+      };
+    }
+
+    let responseText = "";
+    const codex = this.createCodexClient((event) => {
+      if (event.role === "codex" && event.kind === "agent") {
+        responseText += event.message;
+      }
+      this.options.onEvent?.({
+        taskId: null,
+        runId: null,
+        role: "scheduler",
+        kind: event.kind,
+        message: event.message,
+      });
+    });
+
+    try {
+      const session = await codex.startSession(this.root);
+      await codex.runTurn(session, {
+        title: "GoalForge scheduler",
+        prompt: buildSchedulerPrompt(tasks, maxConcurrency),
+      });
+      const decision = parseSchedulerResponse(responseText, tasks, maxConcurrency);
+      if (!decision.taskIds.length) {
+        return { taskIds: [tasks[0].id], notes: "Scheduler returned no runnable tasks." };
+      }
+      return decision;
+    } finally {
+      await codex.stop().catch(() => {});
+    }
+  }
+}
+
+export function parseSchedulerResponse(
+  responseText: string,
+  tasks: Task[],
+  maxConcurrency: number,
+): ScheduleDecision {
+  const allowed = new Set(tasks.map((task) => task.id));
+  const parsed = JSON.parse(extractJsonObject(responseText)) as Record<string, unknown>;
+  const rawIds = Array.isArray(parsed.taskIds) ? parsed.taskIds : [];
+  const taskIds = rawIds
+    .filter((value): value is string => typeof value === "string" && allowed.has(value))
+    .slice(0, Math.max(1, maxConcurrency));
+  return {
+    taskIds,
+    notes: typeof parsed.notes === "string" ? parsed.notes : "No scheduler notes.",
+  };
+}
+
+function buildSchedulerPrompt(tasks: Task[], maxConcurrency: number): string {
+  const taskList = tasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    acceptanceCriteria: task.acceptanceCriteria,
+    workpad: task.workpad,
+  }));
+
+  return `You are the GoalForge scheduler for a local coding project.
+
+Choose which ready tasks can safely run in parallel right now.
+
+Rules:
+- Output only valid JSON. Do not wrap it in markdown.
+- Return an object with taskIds and notes.
+- taskIds must contain 1 to ${maxConcurrency} IDs from the provided tasks.
+- Pick independent tasks only. Avoid parallelizing tasks that likely edit the same files, depend on each other, or need the result of another task.
+- Prefer higher priority when independence is uncertain.
+- Notes should explain why the chosen tasks can run together or why only one should run.
+
+Dispatchable tasks:
+${JSON.stringify(taskList, null, 2)}
+`;
+}
+
+function extractJsonObject(responseText: string): string {
+  const trimmed = responseText.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return extractJsonObject(fenced[1]);
+  }
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+  throw new Error("Scheduler response did not contain a JSON object.");
+}

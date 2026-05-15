@@ -68,20 +68,6 @@ async function initCommand(): Promise<void> {
 
 async function goalCommand(args: string[]): Promise<void> {
   const text = args.join(" ").trim();
-  const store = new BoardStore(root);
-  try {
-    store.initProject();
-    await ensureGitRepository(root);
-    const { goal, task } = store.createGoal(text);
-    console.log(`${goal.id} created.`);
-    console.log(`${task.id} ${TASK_STATUS_LABELS[task.status]} ${task.title}`);
-  } finally {
-    store.close();
-  }
-}
-
-async function planCommand(args: string[]): Promise<void> {
-  const text = args.join(" ").trim();
   if (!text) {
     throw new Error("Goal text is required.");
   }
@@ -93,19 +79,23 @@ async function planCommand(args: string[]): Promise<void> {
     const planner = new GoalPlanner(root, {
       onEvent: (event) => {
         if (event.message.trim()) {
-          console.log(`[planner] ${event.kind} ${event.message}`);
+          console.log(`[compiler] ${event.kind} ${event.message}`);
         }
       },
     });
     const drafts = await planner.plan(text);
     const { goal, tasks } = store.createGoalWithTasks(text, drafts);
-    console.log(`${goal.id} planned.`);
+    console.log(`${goal.id} compiled.`);
     for (const task of tasks) {
       console.log(`${task.id} P${task.priority} ${TASK_STATUS_LABELS[task.status]} ${task.title}`);
     }
   } finally {
     store.close();
   }
+}
+
+async function planCommand(args: string[]): Promise<void> {
+  await goalCommand(args);
 }
 
 async function runCommand(args: string[]): Promise<void> {
@@ -133,13 +123,13 @@ async function runCommand(args: string[]): Promise<void> {
     },
   });
   try {
-    if (runAll) {
+    if (runAll || !taskId) {
       const tasks = await worker.runQueue(limit);
       console.log(`Processed ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
       return;
     }
 
-    const task = taskId ? await worker.runTask(taskId) : await worker.runNext();
+    const task = await worker.runTask(taskId);
     console.log(`${task.id} is now ${TASK_STATUS_LABELS[task.status]}.`);
   } finally {
     store.close();
@@ -256,7 +246,6 @@ function printHelp(): void {
 Usage:
   goalforge init
   goalforge goal "<goal text>"
-  goalforge plan "<goal text>"
   goalforge run [TASK-ID]
   goalforge run --all [--limit N]
   goalforge review TASK-ID

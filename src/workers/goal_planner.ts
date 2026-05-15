@@ -31,7 +31,7 @@ export class GoalPlanner {
       this.onEvent?.({
         taskId: null,
         runId: null,
-        role: "planner",
+        role: "compiler",
         kind: event.kind,
         message: event.message,
       });
@@ -40,7 +40,7 @@ export class GoalPlanner {
     try {
       const session = await codex.startSession(this.root);
       await codex.runTurn(session, {
-        title: "GoalForge planner",
+        title: "GoalForge goal compiler",
         prompt: buildPlannerPrompt(goalText),
       });
       return parsePlannerResponse(responseText);
@@ -51,26 +51,31 @@ export class GoalPlanner {
 }
 
 export function parsePlannerResponse(responseText: string): TaskDraft[] {
-  const jsonText = extractJsonArray(responseText);
+  const jsonText = extractJson(responseText);
   const parsed = JSON.parse(jsonText);
-  if (!Array.isArray(parsed)) {
-    throw new Error("Planner response must be a JSON array.");
-  }
+  const items = Array.isArray(parsed) ? parsed : [parsed];
 
-  const drafts = parsed.slice(0, 12).map((item, index) => {
+  const drafts = items.slice(0, 1).map((item, index) => {
     if (!item || typeof item !== "object") {
       throw new Error(`Planner task ${index + 1} is not an object.`);
     }
     const record = item as Record<string, unknown>;
+    const prompt = limitText(
+      stringField(
+        record.prompt,
+        stringField(record.description, stringField(record.title, `Task ${index + 1}`)),
+      ),
+      4000,
+    );
     return {
       title: stringField(record.title, `Task ${index + 1}`),
-      description: stringField(record.description, stringField(record.title, `Task ${index + 1}`)),
+      description: prompt,
       acceptanceCriteria: stringField(
         record.acceptanceCriteria,
         "- Implement the task.\n- Run relevant validation.",
       ),
       priority: numberField(record.priority, 100 - index),
-      workpad: stringField(record.workpad, "Created by GoalForge planner."),
+      workpad: stringField(record.workpad, "Created by GoalForge prompt compiler."),
     };
   });
 
@@ -81,40 +86,52 @@ export function parsePlannerResponse(responseText: string): TaskDraft[] {
 }
 
 function buildPlannerPrompt(goalText: string): string {
-  return `You are the GoalForge planner for a local coding project.
+  return `You are the GoalForge prompt compiler for a local coding project.
 
-Break the user's goal into a small, ordered kanban task list for Codex workers.
+Turn the user's rough feature request into one strong Codex-ready goal prompt.
 
 Rules:
 - Output only valid JSON. Do not wrap it in markdown.
-- Return a JSON array with 1 to 8 task objects.
-- Each object must include title, description, acceptanceCriteria, priority, and workpad.
+- Return one JSON object, not an array.
+- The object must include title, prompt, acceptanceCriteria, priority, and workpad.
+- prompt is the exact multiline prompt a Codex worker will follow for this goal.
+- prompt must be under 4,000 characters.
 - priority is an integer from 0 to 999. Higher priority runs first.
 - acceptanceCriteria must be a single markdown string with concrete checkable bullets.
-- Keep tasks scoped so a worker can complete exactly one task in an isolated git worktree.
-- Mention dependencies or delegation notes in workpad.
-- Do not include tasks for unrelated cleanup.
+- Keep the prompt scoped so one worker can complete it in an isolated git worktree.
+- Include relevant repo-inspection, implementation, and validation instructions in the prompt.
+- Mention dependency, parallelization, or delegation notes in workpad.
+- Do not ask the user follow-up questions. Make reasonable assumptions and encode them in the prompt.
+- Do not include unrelated cleanup.
 
 User goal:
 ${goalText}
 `;
 }
 
-function extractJsonArray(responseText: string): string {
+function extractJson(responseText: string): string {
   const trimmed = responseText.trim();
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+  if (
+    (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+    (trimmed.startsWith("{") && trimmed.endsWith("}"))
+  ) {
     return trimmed;
   }
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced?.[1]) {
-    return extractJsonArray(fenced[1]);
+    return extractJson(fenced[1]);
   }
-  const start = trimmed.indexOf("[");
-  const end = trimmed.lastIndexOf("]");
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  const useObject = objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart);
+  const start = useObject ? objectStart : arrayStart;
+  const end = useObject ? objectEnd : arrayEnd;
   if (start >= 0 && end > start) {
     return trimmed.slice(start, end + 1);
   }
-  throw new Error("Planner response did not contain a JSON array.");
+  throw new Error("Planner response did not contain JSON.");
 }
 
 function stringField(value: unknown, fallback: string): string {
@@ -123,4 +140,12 @@ function stringField(value: unknown, fallback: string): string {
 
 function numberField(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function limitText(value: string, maxCharacters: number): string {
+  if (value.length <= maxCharacters) {
+    return value;
+  }
+  return value.slice(0, maxCharacters - 80).trimEnd() +
+    "\n\n[GoalForge truncated this compiled prompt to keep it under 4,000 characters.]";
 }
