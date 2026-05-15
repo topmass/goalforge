@@ -53,17 +53,21 @@ Deno.test("worker resumes an existing task thread for continuation turns", async
 
   const store = new BoardStore(root);
   const resumed: string[] = [];
+  const prompts: string[] = [];
   try {
     store.initProject();
     const { task } = store.createGoal("Continue reviewed work");
     const worker = new GoalForgeWorker(root, store, {
-      createCodexClient: (onEvent) => new TestCodexClient(onEvent, resumed),
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent, resumed, prompts),
     });
     await worker.runTask(task.id);
     const first = store.getTask(task.id);
     assertEquals(first.status, "review");
+    store.enqueueMessage(task.id, "user", "Please refine the result.");
     await worker.runTask(task.id);
     assertEquals(resumed, ["thread-test"]);
+    assertEquals(store.listPendingMessages(task.id).length, 0);
+    assert(prompts.some((prompt) => prompt.includes("Please refine the result.")));
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -119,6 +123,7 @@ class TestCodexClient implements CodexClient {
       },
     ) => void,
     private readonly resumed: string[] = [],
+    private readonly prompts: string[] = [],
   ) {}
 
   startSession(cwd: string): Promise<CodexSession> {
@@ -138,6 +143,7 @@ class TestCodexClient implements CodexClient {
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    this.prompts.push(_input.prompt);
     if (_input.title === "GoalForge scheduler") {
       assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({

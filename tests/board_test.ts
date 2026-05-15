@@ -157,3 +157,21 @@ Deno.test("events keep readable activity and raw protocol payloads", () => {
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("queued messages appear on the board and can be processed", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Receive queued instructions");
+    store.enqueueMessage(task.id, "user", "Please keep the scope tight.");
+    assertEquals(store.getBoard().messages.length, 1);
+    const pending = store.listPendingMessages(task.id);
+    assertEquals(pending.length, 1);
+    store.markMessagesProcessed(pending.map((message) => message.id));
+    assertEquals(store.listPendingMessages(task.id).length, 0);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});

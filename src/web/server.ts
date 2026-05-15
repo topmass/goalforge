@@ -215,6 +215,19 @@ export function startServer(
           return json(result);
         }
 
+        const messageMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/messages$/);
+        if (messageMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(messageMatch[1]);
+          const body = await readJson<{ message?: string; role?: string }>(request);
+          const message = body.message?.trim() ?? "";
+          if (!message) {
+            return json({ error: "message is required" }, 400);
+          }
+          const event = store.enqueueMessage(taskId, body.role?.trim() || "user", message);
+          broadcastActivity(event);
+          return json({ ok: true, event });
+        }
+
         const mergeMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/merge$/);
         if (mergeMatch && request.method === "POST") {
           const taskId = decodeURIComponent(mergeMatch[1]);

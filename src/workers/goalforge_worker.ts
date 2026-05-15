@@ -1,5 +1,5 @@
 import { BoardStore } from "../board/store.ts";
-import { ActivityEvent, ActivityEventInput, Task } from "../board/types.ts";
+import { ActivityEvent, ActivityEventInput, QueuedMessage, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
 import { GoalScheduler } from "./goal_scheduler.ts";
@@ -109,6 +109,7 @@ export class GoalForgeWorker {
       const assignment = await prepareTaskWorktree(this.root, task);
       const projectInstructions = await collectAgentsInstructions(this.root);
       const projectMemory = buildProjectMemory(this.store);
+      const queuedMessages = this.store.listPendingMessages(task.id);
       task = this.store.assignWorktree(task.id, assignment.branchName, assignment.worktreePath);
       this.emit(
         this.store.appendEvent(
@@ -148,8 +149,15 @@ export class GoalForgeWorker {
 
       const turn = await codex.runTurn(session, {
         title: `${task.id}: ${task.title}`,
-        prompt: buildWorkerPrompt(this.root, task, projectInstructions, projectMemory),
+        prompt: buildWorkerPrompt(
+          this.root,
+          task,
+          projectInstructions,
+          projectMemory,
+          queuedMessages,
+        ),
       });
+      this.store.markMessagesProcessed(queuedMessages.map((message) => message.id));
       const testEngineer = new GoalTestEngineer(projectInstructions, projectMemory, {
         onEvent: (event) => {
           this.emit(
@@ -233,6 +241,7 @@ function buildWorkerPrompt(
   task: Task,
   projectInstructions: string,
   projectMemory: string,
+  queuedMessages: QueuedMessage[],
 ): string {
   const instructions = [
     ["constitution.md", PROMPTS["constitution.md"]],
@@ -252,6 +261,9 @@ ${projectInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}
+
+Queued messages for this task:
+${formatQueuedMessages(queuedMessages)}
 
 Task:
 - ID: ${task.id}
@@ -277,6 +289,14 @@ Rules:
 - Do not wait for user input. If blocked, explain the blocker clearly in your final response.
 - End with a concise handoff containing changed files, validation commands/results, and any remaining risks.
 `;
+}
+
+function formatQueuedMessages(messages: QueuedMessage[]): string {
+  if (!messages.length) {
+    return "No queued messages for this task.";
+  }
+  return messages.map((message) => `- ${message.createdAt} ${message.role}: ${message.message}`)
+    .join("\n");
 }
 
 function buildWorkpad(task: Task, threadId: string, turnId: string): string {

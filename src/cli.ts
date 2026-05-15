@@ -42,6 +42,9 @@ try {
     case "remove":
       deleteCommand(args);
       break;
+    case "message":
+      messageCommand(args);
+      break;
     case undefined:
     case "-h":
     case "--help":
@@ -239,6 +242,19 @@ function deleteCommand(args: string[]): void {
   });
 }
 
+function messageCommand(args: string[]): void {
+  const taskId = args[0];
+  const message = args.slice(1).join(" ").trim();
+  if (!taskId || !message) {
+    throw new Error('Usage: goalforge message TASK-ID "message"');
+  }
+
+  usingStore((store) => {
+    const event = store.enqueueMessage(taskId, "user", message);
+    console.log(event.message);
+  });
+}
+
 function statusCommand(): void {
   usingStore((store) => {
     const board = store.getBoard();
@@ -268,6 +284,7 @@ Usage:
   goalforge run --all [--limit N]
   goalforge review TASK-ID
   goalforge delete TASK-ID
+  goalforge message TASK-ID "<message>"
   goalforge serve [--port 4733]
   goalforge board [--port 4733]
   goalforge merge TASK-ID

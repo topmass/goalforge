@@ -59,6 +59,15 @@ export interface Run {
   finishedAt: string | null;
 }
 
+export interface QueuedMessage {
+  id: number;
+  taskId: string;
+  role: string;
+  message: string;
+  processed: boolean;
+  createdAt: string;
+}
+
 export interface ActivityEvent {
   id: number;
   taskId: string | null;
@@ -78,6 +87,7 @@ export interface BoardSnapshot {
   goals: Goal[];
   tasks: Task[];
   runs: Run[];
+  messages: QueuedMessage[];
   events: ActivityEvent[];
   statuses: { id: TaskStatus; label: string }[];
 }

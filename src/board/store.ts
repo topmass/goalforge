@@ -15,6 +15,7 @@ import {
   ActivityEventInput,
   BoardSnapshot,
   Goal,
+  QueuedMessage,
   Run,
   Task,
   TASK_STATUS_LABELS,
@@ -123,6 +124,7 @@ export class BoardStore {
       goals: this.listGoals(),
       tasks: this.listTasks(),
       runs: this.listRuns(),
+      messages: this.listMessages(),
       events: this.listEvents(250),
       statuses: TASK_STATUSES.map((id) => ({ id, label: TASK_STATUS_LABELS[id] })),
     };
@@ -352,11 +354,31 @@ export class BoardStore {
     );
   }
 
-  enqueueMessage(taskId: string, role: string, message: string): void {
+  enqueueMessage(taskId: string, role: string, message: string): ActivityEvent {
     this.db.prepare(
       "INSERT INTO messages (task_id, role, message, processed, created_at) VALUES (?, ?, ?, 0, ?)",
     ).run(taskId, role, message, timestamp());
-    this.appendEvent(taskId, null, role, "queue", `Queued message for ${taskId}: ${message}`);
+    return this.appendEvent(
+      taskId,
+      null,
+      role,
+      "queue",
+      `Queued message for ${taskId}: ${message}`,
+    );
+  }
+
+  listPendingMessages(taskId: string): QueuedMessage[] {
+    return (this.db.prepare(
+      "SELECT * FROM messages WHERE task_id = ? AND processed = 0 ORDER BY id ASC",
+    ).all(taskId) as SqlRow[]).map(messageFromRow);
+  }
+
+  markMessagesProcessed(ids: number[]): void {
+    if (!ids.length) {
+      return;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    this.db.prepare(`UPDATE messages SET processed = 1 WHERE id IN (${placeholders})`).run(...ids);
   }
 
   private ensureSchema(): void {
@@ -451,6 +473,12 @@ export class BoardStore {
   private listRuns(): Run[] {
     return (this.db.prepare("SELECT * FROM runs ORDER BY started_at DESC").all() as SqlRow[]).map(
       runFromRow,
+    );
+  }
+
+  private listMessages(): QueuedMessage[] {
+    return (this.db.prepare("SELECT * FROM messages ORDER BY id ASC").all() as SqlRow[]).map(
+      messageFromRow,
     );
   }
 
@@ -605,6 +633,17 @@ function eventFromRow(row: SqlRow): ActivityEvent {
     message: String(row.message),
     createdAt: String(row.created_at),
     rawJson: nullableString(row.raw_json),
+  };
+}
+
+function messageFromRow(row: SqlRow): QueuedMessage {
+  return {
+    id: Number(row.id),
+    taskId: String(row.task_id),
+    role: String(row.role),
+    message: String(row.message),
+    processed: Boolean(row.processed),
+    createdAt: String(row.created_at),
   };
 }
 
