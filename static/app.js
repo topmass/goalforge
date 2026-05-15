@@ -1,6 +1,7 @@
 const state = {
   board: { goals: [], tasks: [], runs: [], events: [], statuses: [] },
   selectedTaskId: null,
+  draggedTaskId: null,
 };
 
 const boardEl = document.querySelector("#board");
@@ -8,6 +9,8 @@ const commandEl = document.querySelector("#commandCenter");
 const connectionEl = document.querySelector("#connection");
 const goalTextEl = document.querySelector("#goalText");
 const selectedTaskEl = document.querySelector("#selectedTask");
+const taskModalEl = document.querySelector("#taskModal");
+const taskModalContentEl = document.querySelector("#taskModalContent");
 
 document.querySelector("#addGoal").addEventListener("click", addGoal);
 document.querySelector("#startGoalforge").addEventListener(
@@ -16,6 +19,11 @@ document.querySelector("#startGoalforge").addEventListener(
 );
 goalTextEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") addGoal();
+});
+taskModalEl.addEventListener("click", () => closeTaskModal());
+taskModalContentEl.addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeTaskModal();
 });
 
 connectEvents();
@@ -125,11 +133,19 @@ function taskCard(task) {
   card.className = `task-card${state.selectedTaskId === task.id ? " selected" : ""}`;
   card.draggable = true;
   card.addEventListener("dragstart", (event) => {
+    state.draggedTaskId = task.id;
     event.dataTransfer.setData("text/plain", task.id);
   });
+  card.addEventListener("dragend", () => {
+    setTimeout(() => {
+      state.draggedTaskId = null;
+    }, 0);
+  });
   card.addEventListener("click", () => {
+    if (state.draggedTaskId === task.id) return;
     state.selectedTaskId = task.id;
     render();
+    openTaskModal(task);
   });
   const canDelete = task.status !== "done";
   const canStart = ["inbox", "ready", "blocked"].includes(task.status);
@@ -182,6 +198,48 @@ function renderSelection() {
   });
 }
 
+function openTaskModal(task) {
+  taskModalContentEl.innerHTML = `
+    <div class="modal-head">
+      <span>${escapeHtml(task.id)} · ${escapeHtml(labelFor(task.status)).toUpperCase()}</span>
+      <button class="modal-close" type="button" data-action="close-modal">CLOSE</button>
+    </div>
+    <h2>${escapeHtml(task.title)}</h2>
+    <div class="modal-meta">
+      <span>P${task.priority}</span>
+      <span>${task.branchName ? escapeHtml(task.branchName) : "NO BRANCH"}</span>
+      <span>${task.threadId ? "THREAD" : "NO THREAD"}</span>
+    </div>
+    <section>
+      <h3>Plan</h3>
+      <pre>${escapeHtml(task.description || "No compiled plan recorded.")}</pre>
+    </section>
+    <section>
+      <h3>Acceptance</h3>
+      <pre>${escapeHtml(task.acceptanceCriteria || "No acceptance criteria recorded.")}</pre>
+    </section>
+    <section>
+      <h3>Workpad</h3>
+      <pre>${escapeHtml(task.workpad || "No workpad notes recorded.")}</pre>
+    </section>
+    ${
+    task.validation
+      ? `<section><h3>Validation</h3><pre>${escapeHtml(task.validation)}</pre></section>`
+      : ""
+  }
+  `;
+  taskModalEl.hidden = false;
+  taskModalEl.querySelector("[data-action='close-modal']")?.addEventListener(
+    "click",
+    closeTaskModal,
+  );
+}
+
+function closeTaskModal() {
+  taskModalEl.hidden = true;
+  taskModalContentEl.innerHTML = "";
+}
+
 async function handleCardAction(task, action) {
   if (action === "delete") {
     await deleteTask(task);
@@ -226,7 +284,7 @@ async function deleteTask(task) {
 
 function renderCommandCenter() {
   const groups = new Map();
-  for (const event of compactEvents(state.board.events.slice(-220))) {
+  for (const event of compactEvents(displayEvents(state.board.events).slice(-160))) {
     const key = event.runId || event.taskId || "system";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(event);
@@ -258,8 +316,12 @@ function renderCommandCenter() {
       events.map((event) => `
           <div class="terminal-line">
             <span class="time">${timeOnly(event.createdAt)}</span>
-            <span class="kind">${escapeHtml(event.kind)}</span>
-            <span class="message">${escapeHtml(event.message)}</span>
+            <span class="kind" title="${escapeHtml(event.kind)}">${
+        escapeHtml(shortKind(event.kind))
+      }</span>
+            <span class="message" title="${escapeHtml(event.message)}">${
+        escapeHtml(shortMessage(event.message))
+      }</span>
           </div>
         `).join("")
     }
@@ -269,6 +331,17 @@ function renderCommandCenter() {
     const terminal = card.querySelector(".terminal");
     terminal.scrollTop = terminal.scrollHeight;
   }
+}
+
+function displayEvents(events) {
+  return events.filter((event) => {
+    if (!event.message?.trim()) return false;
+    if (["agent", "reasoning"].includes(event.kind)) return false;
+    if (event.kind === "mcpServer/startupStatus/updated") return false;
+    if (event.message.startsWith("Codex event: mcpServer/")) return false;
+    if (event.message === "Token usage updated.") return false;
+    return true;
+  });
 }
 
 function compactEvents(events) {
@@ -287,6 +360,17 @@ function compactEvents(events) {
     }
   }
   return compacted;
+}
+
+function shortKind(value) {
+  const text = String(value || "");
+  if (text.includes("/")) return text.split("/").at(-1);
+  return text.length > 18 ? `${text.slice(0, 17)}...` : text;
+}
+
+function shortMessage(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
 function labelFor(status) {

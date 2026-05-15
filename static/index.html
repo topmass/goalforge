@@ -9,16 +9,7 @@
   <body>
     <main class="shell">
       <section class="masthead">
-        <pre
-          class="ascii"
-          aria-label="GoalForge ASCII title"
-        >
-  ________              __ ______
- / ____/ /___  ____ _  / // ____/___  _________  ___
-/ / __/ / __ \/ __ `/ / // /_  / __ \/ ___/ __ \/ _ \
-/ /_/ / / /_/ / /_/ / / // __/ / /_/ / /  / /_/ /  __/
-\____/_/\____/\__,_/ /_//_/    \____/_/   \____/\___/
-        </pre>
+        <div class="wordmark" aria-label="GoalForge">GoalForge</div>
         <div class="mastline">
           <span>LOCAL CODEX ORCHESTRATION</span>
           <span id="connection">CONNECTING</span>
@@ -37,6 +28,11 @@
       </section>
 
       <section id="board" class="board" aria-label="Kanban board"></section>
+      <div id="taskModal" class="modal-backdrop" hidden>
+        <article class="task-modal" role="dialog" aria-modal="true" aria-label="Goal plan">
+          <div id="taskModalContent"></div>
+        </article>
+      </div>
 
       <section class="command">
         <div class="panel-title">

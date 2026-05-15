@@ -1,12 +1,13 @@
 :root {
   color-scheme: dark;
-  --bg: #050505;
-  --panel: #0b0b0b;
-  --panel-2: #111;
-  --ink: #f1f1f1;
-  --muted: #e0e0e0;
-  --dim: #d2d2d2;
-  --line: #3e3e3e;
+  --bg: #050607;
+  --panel: #0a0d0f;
+  --panel-2: #121719;
+  --ink: #f4f7f4;
+  --muted: #d7e0d9;
+  --dim: #b7c5bc;
+  --line: #4a5650;
+  --accent: #b9f7cf;
   --hot: #fff;
   --warn: #dedede;
   --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -74,16 +75,19 @@ input:focus {
 
 .masthead {
   border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.84);
+  background: linear-gradient(180deg, rgba(12, 17, 18, 0.96), rgba(4, 5, 6, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(185, 247, 207, 0.08);
 }
 
-.ascii {
-  margin: 0;
-  padding: 18px;
-  overflow: auto;
+.wordmark {
+  padding: 22px 18px 20px;
   color: var(--ink);
-  font-size: 13px;
-  line-height: 1.05;
+  font-size: clamp(40px, 7vw, 92px);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  text-shadow: 0 0 24px rgba(185, 247, 207, 0.2);
 }
 
 .mastline,
@@ -132,7 +136,7 @@ input:focus {
 }
 
 .column.drag-over {
-  outline: 1px solid var(--ink);
+  outline: 1px solid var(--accent);
 }
 
 .column-head {
@@ -159,7 +163,7 @@ input:focus {
 
 .task-card:hover,
 .task-card.selected {
-  border-color: var(--ink);
+  border-color: var(--accent);
 }
 
 .task-id {
@@ -215,7 +219,7 @@ input:focus {
 
 .command-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
   gap: 8px;
   padding: 8px;
 }
@@ -236,21 +240,21 @@ input:focus {
 }
 
 .terminal {
-  height: 150px;
+  height: 172px;
   overflow: auto;
   padding: 8px;
   color: var(--ink);
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .terminal-line {
   display: grid;
-  grid-template-columns: 76px 88px minmax(0, 1fr);
-  gap: 8px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  grid-template-columns: 92px 96px minmax(0, 1fr);
+  gap: 10px;
+  white-space: nowrap;
   align-items: start;
+  min-width: 0;
 }
 
 .terminal-line .time {
@@ -259,10 +263,91 @@ input:focus {
 
 .terminal-line .kind {
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .terminal-line .message {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.task-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--accent);
+  background: #07100b;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.modal-head,
+.modal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.modal-meta {
+  justify-content: flex-start;
+  border-top: 1px solid var(--line);
+}
+
+.modal-close {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.task-modal h2 {
+  margin: 0;
+  padding: 16px 12px 14px;
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.task-modal section {
+  border-top: 1px solid var(--line);
+  padding: 12px;
+}
+
+.task-modal h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.task-modal pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 @media (max-width: 1200px) {
@@ -288,7 +373,7 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
-  .ascii {
-    font-size: 10px;
+  .wordmark {
+    font-size: 38px;
   }
 }
