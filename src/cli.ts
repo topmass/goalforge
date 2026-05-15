@@ -2,7 +2,8 @@ import { BoardStore } from "./board/store.ts";
 import { TASK_STATUS_LABELS } from "./board/types.ts";
 import { normalizeRoot } from "./paths.ts";
 import { startServer } from "./web/server.ts";
-import { gitMergeBranch } from "./workers/git_utils.ts";
+import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
+import { GoalPlanner } from "./workers/goal_planner.ts";
 import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
 
 const root = normalizeRoot(Deno.cwd());
@@ -11,10 +12,13 @@ const [command, ...args] = Deno.args;
 try {
   switch (command) {
     case "init":
-      initCommand();
+      await initCommand();
       break;
     case "goal":
-      goalCommand(args);
+      await goalCommand(args);
+      break;
+    case "plan":
+      await planCommand(args);
       break;
     case "run":
       await runCommand(args);
@@ -44,27 +48,80 @@ try {
   Deno.exit(1);
 }
 
-function initCommand(): void {
-  usingStore((store) => {
+async function initCommand(): Promise<void> {
+  const store = new BoardStore(root);
+  try {
     store.initProject();
+    const actions = await ensureGitRepository(root);
     console.log(`GoalForge initialized at ${root}/.goalforge`);
-  });
+    for (const action of actions) {
+      console.log(action);
+    }
+  } finally {
+    store.close();
+  }
 }
 
-function goalCommand(args: string[]): void {
+async function goalCommand(args: string[]): Promise<void> {
   const text = args.join(" ").trim();
-  usingStore((store) => {
+  const store = new BoardStore(root);
+  try {
     store.initProject();
+    await ensureGitRepository(root);
     const { goal, task } = store.createGoal(text);
     console.log(`${goal.id} created.`);
     console.log(`${task.id} ${TASK_STATUS_LABELS[task.status]} ${task.title}`);
-  });
+  } finally {
+    store.close();
+  }
+}
+
+async function planCommand(args: string[]): Promise<void> {
+  const text = args.join(" ").trim();
+  if (!text) {
+    throw new Error("Goal text is required.");
+  }
+
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    await ensureGitRepository(root);
+    const planner = new GoalPlanner(root, {
+      onEvent: (event) => {
+        if (event.message.trim()) {
+          console.log(`[planner] ${event.kind} ${event.message}`);
+        }
+      },
+    });
+    const drafts = await planner.plan(text);
+    const { goal, tasks } = store.createGoalWithTasks(text, drafts);
+    console.log(`${goal.id} planned.`);
+    for (const task of tasks) {
+      console.log(`${task.id} P${task.priority} ${TASK_STATUS_LABELS[task.status]} ${task.title}`);
+    }
+  } finally {
+    store.close();
+  }
 }
 
 async function runCommand(args: string[]): Promise<void> {
-  const taskId = args[0];
+  const runAll = args.includes("--all") || args.includes("-a");
+  const limitIndex = args.findIndex((arg) => arg === "--limit");
+  const limit = limitIndex >= 0 ? Number(args[limitIndex + 1]) : Number.POSITIVE_INFINITY;
+  if (limitIndex >= 0 && (!Number.isInteger(limit) || limit < 1)) {
+    throw new Error("A valid --limit value is required.");
+  }
+  const positional = args.filter((arg, index) =>
+    !arg.startsWith("-") && args[index - 1] !== "--limit"
+  );
+  const taskId = positional[0];
+  if (runAll && taskId) {
+    throw new Error("Use either goalforge run TASK-ID or goalforge run --all, not both.");
+  }
+
   const store = new BoardStore(root);
   store.initProject();
+  await ensureGitRepository(root);
   const worker = new GoalForgeWorker(root, store, {
     onEvent: (event) => {
       const task = event.taskId ?? "system";
@@ -72,6 +129,12 @@ async function runCommand(args: string[]): Promise<void> {
     },
   });
   try {
+    if (runAll) {
+      const tasks = await worker.runQueue(limit);
+      console.log(`Processed ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`);
+      return;
+    }
+
     const task = taskId ? await worker.runTask(taskId) : await worker.runNext();
     console.log(`${task.id} is now ${TASK_STATUS_LABELS[task.status]}.`);
   } finally {
@@ -84,6 +147,13 @@ async function serveCommand(args: string[]): Promise<void> {
   const port = portArgIndex >= 0 ? Number(args[portArgIndex + 1]) : 4733;
   if (!Number.isInteger(port) || port < 1) {
     throw new Error("A valid --port value is required.");
+  }
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    await ensureGitRepository(root);
+  } finally {
+    store.close();
   }
   const server = startServer(root, port);
   console.log(`Open ${server.url}`);
@@ -148,7 +218,9 @@ function printHelp(): void {
 Usage:
   goalforge init
   goalforge goal "<goal text>"
+  goalforge plan "<goal text>"
   goalforge run [TASK-ID]
+  goalforge run --all [--limit N]
   goalforge serve [--port 4733]
   goalforge board [--port 4733]
   goalforge merge TASK-ID

@@ -12,8 +12,7 @@ export async function prepareTaskWorktree(root: string, task: Task): Promise<Wor
   const worktreePath = path.join(worktreesPath(root), task.id);
 
   if (!await isGitRepo(root)) {
-    await Deno.mkdir(worktreePath, { recursive: true });
-    return { branchName, worktreePath };
+    throw new Error("GoalForge workers require a git repository. Run goalforge init first.");
   }
 
   try {
@@ -77,9 +76,44 @@ export async function gitMergeBranch(root: string, branchName: string): Promise<
   ]);
 }
 
+export async function ensureGitRepository(root: string): Promise<string[]> {
+  const actions: string[] = [];
+  if (!await isGitRepo(root)) {
+    await runCommand(root, ["git", "init", "-b", "main"]);
+    actions.push("Initialized git repository.");
+  }
+
+  if (!await hasHeadCommit(root)) {
+    await runCommand(root, ["git", "add", "-A"]);
+    await runCommand(root, [
+      "git",
+      "-c",
+      "user.email=goalforge@local",
+      "-c",
+      "user.name=GoalForge",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "GoalForge baseline",
+    ]);
+    actions.push("Created baseline commit.");
+  }
+
+  return actions;
+}
+
 export async function isGitRepo(root: string): Promise<boolean> {
   try {
     await runCommand(root, ["git", "rev-parse", "--is-inside-work-tree"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function hasHeadCommit(root: string): Promise<boolean> {
+  try {
+    await runCommand(root, ["git", "rev-parse", "--verify", "HEAD"]);
     return true;
   } catch {
     return false;

@@ -35,8 +35,23 @@ export class GoalForgeWorker {
     return await this.runTask(task.id);
   }
 
+  async runQueue(limit = Number.POSITIVE_INFINITY): Promise<Task[]> {
+    const completed: Task[] = [];
+    while (completed.length < limit) {
+      const task = this.store.findDispatchableTask();
+      if (!task) {
+        break;
+      }
+      completed.push(await this.runTask(task.id));
+    }
+    return completed;
+  }
+
   async runTask(taskId: string): Promise<Task> {
     let task = this.store.getTask(taskId);
+    if (!["inbox", "ready", "blocked", "review"].includes(task.status)) {
+      throw new Error(`Cannot start ${task.id} while it is ${task.status}.`);
+    }
     const run = this.store.createRun(task.id, "worker");
     this.emit(
       this.store.appendEvent(task.id, run.id, "worker", "phase", "Preparing isolated worktree."),

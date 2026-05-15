@@ -41,6 +41,14 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface TaskDraft {
+  title: string;
+  description: string;
+  acceptanceCriteria: string;
+  priority: number;
+  workpad?: string;
+}
+
 export interface Run {
   id: string;
   taskId: string;

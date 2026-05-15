@@ -4,6 +4,7 @@ import { ActivityEvent, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
+import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 
 export interface GoalForgeServer {
@@ -108,6 +109,31 @@ export function startServer(
           return json(result, 201);
         }
 
+        if (url.pathname === "/api/goals/plan" && request.method === "POST") {
+          const body = await readJson<{ text?: string }>(request);
+          const text = body.text?.trim() ?? "";
+          if (!text) {
+            return json({ error: "Goal text is required." }, 400);
+          }
+          const planner = new GoalPlanner(normalizedRoot, {
+            createCodexClient: options.createCodexClient,
+            onEvent: (event) => {
+              const activity = store.appendEvent(
+                null,
+                null,
+                event.role,
+                event.kind,
+                event.message,
+              );
+              broadcastActivity(activity);
+            },
+          });
+          const drafts = await planner.plan(text);
+          const result = store.createGoalWithTasks(text, drafts);
+          broadcastBoard();
+          return json(result, 201);
+        }
+
         if (url.pathname === "/api/run" && request.method === "POST") {
           queueMicrotask(() => {
             const worker = new GoalForgeWorker(normalizedRoot, store, {
@@ -115,6 +141,20 @@ export function startServer(
               createCodexClient: options.createCodexClient,
             });
             worker.runNext().then(broadcastBoard).catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              broadcast("error", { message });
+            });
+          });
+          return json({ ok: true });
+        }
+
+        if (url.pathname === "/api/run-queue" && request.method === "POST") {
+          queueMicrotask(() => {
+            const worker = new GoalForgeWorker(normalizedRoot, store, {
+              onEvent: broadcastActivity,
+              createCodexClient: options.createCodexClient,
+            });
+            worker.runQueue().then(() => broadcastBoard()).catch((error) => {
               const message = error instanceof Error ? error.message : String(error);
               broadcast("error", { message });
             });

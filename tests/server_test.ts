@@ -47,6 +47,13 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     const mergedBoard = await fetch(`${server.url}/api/board`).then((response) => response.json());
     assertEquals(mergedBoard.tasks[0].status, "done");
     assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
+
+    const planned = await fetch(`${server.url}/api/goals/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "Plan through the GUI path" }),
+    }).then((response) => response.json());
+    assertEquals(planned.tasks.length, 2);
   } finally {
     server.shutdown();
     await server.finished.catch(() => {});
@@ -77,6 +84,37 @@ class TestCodexClient implements CodexClient {
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    if (_input.title === "GoalForge planner") {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: JSON.stringify([
+          {
+            title: "Inspect planned work",
+            description: "Inspect the project before implementation.",
+            acceptanceCriteria: "- Inspection notes are recorded.",
+            priority: 200,
+            workpad: "Planner task one.",
+          },
+          {
+            title: "Implement planned work",
+            description: "Implement the requested planned work.",
+            acceptanceCriteria: "- Implementation is validated.",
+            priority: 100,
+            workpad: "Planner task two.",
+          },
+        ]),
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-planner-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     await Deno.writeTextFile(`${session.cwd}/server-test.txt`, "server worker output\n");
     this.onEvent({
       taskId: null,

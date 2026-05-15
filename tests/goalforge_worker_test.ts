@@ -45,6 +45,43 @@ Deno.test("worker assigns worktree, streams Codex events, and moves task to revi
   }
 });
 
+Deno.test("worker queue processes dispatchable tasks one at a time", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    store.createGoal("First queued task");
+    store.createGoal("Second queued task");
+    const worker = new GoalForgeWorker(root, store, {
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+    });
+    const completed = await worker.runQueue();
+    assertEquals(completed.length, 2);
+    assertEquals(store.getTask("TASK-1").status, "review");
+    assertEquals(store.getTask("TASK-2").status, "review");
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+async function seedGitRepo(root: string): Promise<void> {
+  await git(root, ["init", "-b", "main"]);
+  await Deno.writeTextFile(`${root}/seed.txt`, "seed\n");
+  await git(root, ["add", "seed.txt"]);
+  await git(root, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "-m",
+    "seed",
+  ]);
+}
+
 class TestCodexClient implements CodexClient {
   constructor(
     private readonly onEvent: (

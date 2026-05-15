@@ -18,6 +18,7 @@ import {
   Task,
   TASK_STATUS_LABELS,
   TASK_STATUSES,
+  TaskDraft,
   TaskStatus,
   TransitionResult,
 } from "./types.ts";
@@ -59,51 +60,60 @@ export class BoardStore {
   }
 
   createGoal(text: string): { goal: Goal; task: Task } {
+    const result = this.createGoalWithTasks(text, [defaultTaskDraft(text)]);
+    return { goal: result.goal, task: result.tasks[0] };
+  }
+
+  createGoalWithTasks(text: string, drafts: TaskDraft[]): { goal: Goal; tasks: Task[] } {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Goal text is required.");
     }
+    const taskDrafts = drafts.length ? drafts : [defaultTaskDraft(trimmed)];
 
     const now = timestamp();
     const goalId = this.nextHumanId("GOAL", "goals");
-    const taskId = this.nextHumanId("TASK", "tasks");
-    const title = trimmed.length > 84 ? `${trimmed.slice(0, 81)}...` : trimmed;
-    const acceptance = [
-      `- Clarify and implement: ${trimmed}`,
-      "- Record workpad notes before implementation handoff.",
-      "- Produce validation evidence before requesting Review.",
-    ].join("\n");
 
     this.db.prepare(
       "INSERT INTO goals (id, text, created_at) VALUES (?, ?, ?)",
     ).run(goalId, trimmed, now);
 
-    this.db.prepare(`
-      INSERT INTO tasks (
-        id, goal_id, title, description, status, priority, branch_name, worktree_path,
-        workpad, acceptance_criteria, validation, blocked_reason, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      taskId,
-      goalId,
-      title,
-      trimmed,
-      "ready",
-      100,
-      null,
-      null,
-      "Created from /goal intake. Awaiting worker plan.",
-      acceptance,
-      "",
-      null,
-      now,
-      now,
-    );
+    const tasks: Task[] = [];
+    for (const draft of taskDrafts) {
+      const taskId = this.nextHumanId("TASK", "tasks");
+      this.db.prepare(`
+        INSERT INTO tasks (
+          id, goal_id, title, description, status, priority, branch_name, worktree_path,
+          workpad, acceptance_criteria, validation, blocked_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        taskId,
+        goalId,
+        normalizeTitle(draft.title),
+        draft.description.trim() || trimmed,
+        "ready",
+        normalizePriority(draft.priority),
+        null,
+        null,
+        draft.workpad?.trim() || "Created from GoalForge intake. Awaiting worker handoff.",
+        draft.acceptanceCriteria.trim() || defaultAcceptance(trimmed),
+        "",
+        null,
+        now,
+        now,
+      );
+      tasks.push(this.getTask(taskId));
+    }
 
-    const task = this.getTask(taskId);
     const goal = this.getGoal(goalId);
-    this.appendEvent(taskId, null, "planner", "goal", `Created ${taskId} from ${goalId}.`);
-    return { goal, task };
+    this.appendEvent(
+      tasks[0]?.id ?? null,
+      null,
+      "planner",
+      "goal",
+      `Created ${tasks.length} task${tasks.length === 1 ? "" : "s"} from ${goalId}.`,
+    );
+    return { goal, tasks };
   }
 
   getBoard(): BoardSnapshot {
@@ -142,7 +152,18 @@ export class BoardStore {
     return row ? taskFromRow(row) : null;
   }
 
+  hasRunningRun(taskId: string): boolean {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) AS count FROM runs WHERE task_id = ? AND status = 'running'",
+    ).get(taskId) as { count: number };
+    return Number(row.count) > 0;
+  }
+
   createRun(taskId: string, role: string): Run {
+    if (this.hasRunningRun(taskId)) {
+      throw new Error(`${taskId} already has a running agent.`);
+    }
+
     const run: Run = {
       id: makeId("RUN"),
       taskId,
@@ -437,6 +458,36 @@ function ensureGitignore(root: string): void {
     const prefix = current && !current.endsWith("\n") ? "\n" : "";
     Deno.writeTextFileSync(target, `${current}${prefix}${additions.join("\n")}\n`);
   }
+}
+
+function defaultTaskDraft(text: string): TaskDraft {
+  return {
+    title: normalizeTitle(text),
+    description: text.trim(),
+    priority: 100,
+    acceptanceCriteria: defaultAcceptance(text),
+    workpad: "Created from /goal intake. Awaiting worker plan.",
+  };
+}
+
+function defaultAcceptance(text: string): string {
+  return [
+    `- Clarify and implement: ${text.trim()}`,
+    "- Record workpad notes before implementation handoff.",
+    "- Produce validation evidence before requesting Review.",
+  ].join("\n");
+}
+
+function normalizeTitle(title: string): string {
+  const trimmed = title.trim() || "Untitled task";
+  return trimmed.length > 84 ? `${trimmed.slice(0, 81)}...` : trimmed;
+}
+
+function normalizePriority(priority: number): number {
+  if (!Number.isFinite(priority)) {
+    return 100;
+  }
+  return Math.max(0, Math.min(999, Math.round(priority)));
 }
 
 function goalFromRow(row: SqlRow): Goal {

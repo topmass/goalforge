@@ -80,12 +80,14 @@ Core product requirements:
 Suggested first vertical slice:
 
 - goalforge init creates .goalforge/, SQLite DB, config, prompt templates, and required ignored
-  runtime folders.
+  runtime folders. If the folder is not yet a git repository, it bootstraps one and creates a
+  baseline commit so worktrees can see the project.
 - goalforge goal creates a goal and initial task on the board.
 - goalforge serve starts the daemon and GUI.
 - GUI displays the kanban board and command center.
 - goalforge run or a GUI button starts a real Codex worker that streams activity into the command
   center and moves a task through In Progress -> Review.
+- goalforge run --all or the GUI Run Queue action processes queued tasks one at a time.
 - Codex App Server client exists behind an interface and is the default production worker path.
 - Tests may use injected controlled Codex clients only to avoid spending turns during automated
   checks.
