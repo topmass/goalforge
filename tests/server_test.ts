@@ -1,0 +1,128 @@
+import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+  CodexClient,
+  CodexSession,
+  CodexTurnInput,
+  CodexTurnResult,
+} from "../src/workers/codex_app_server.ts";
+import { startServer } from "../src/web/server.ts";
+
+Deno.test("server exposes board, creates goals, and runs Codex worker", async () => {
+  const root = Deno.makeTempDirSync();
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["commit", "--allow-empty", "-m", "seed"]);
+  const port = 48733 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const html = await fetch(`${server.url}/`).then((response) => response.text());
+    assertStringIncludes(html, "GoalForge");
+
+    const create = await fetch(`${server.url}/api/goals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "Run through the GUI path" }),
+    }).then((response) => response.json());
+    assertEquals(create.task.id, "TASK-1");
+
+    const runResponse = await fetch(`${server.url}/api/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assertEquals(runResponse.ok, true);
+    await runResponse.json();
+
+    const board = await waitForReview(server.url);
+    assertEquals(board.tasks[0].status, "review");
+    assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
+    assertStringIncludes(board.tasks[0].validation, "Commit:");
+
+    const mergeResponse = await fetch(`${server.url}/api/tasks/TASK-1/merge`, {
+      method: "POST",
+    });
+    assertEquals(mergeResponse.ok, true);
+    await mergeResponse.json();
+    const mergedBoard = await fetch(`${server.url}/api/board`).then((response) => response.json());
+    assertEquals(mergedBoard.tasks[0].status, "done");
+    assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+interface BoardResponse {
+  tasks: Array<{ status: string; validation: string }>;
+  events: Array<{ message: string }>;
+}
+
+class TestCodexClient implements CodexClient {
+  constructor(
+    private readonly onEvent: (
+      event: {
+        taskId: string | null;
+        runId: string | null;
+        role: string;
+        kind: string;
+        message: string;
+      },
+    ) => void,
+  ) {}
+
+  startSession(cwd: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId: "thread-server-test", cwd });
+  }
+
+  async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    await Deno.writeTextFile(`${session.cwd}/server-test.txt`, "server worker output\n");
+    this.onEvent({
+      taskId: null,
+      runId: null,
+      role: "codex",
+      kind: "output",
+      message: "server worker output",
+    });
+    return {
+      threadId: session.threadId,
+      turnId: "turn-server-test",
+      status: "completed",
+      completed: true,
+    };
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+async function git(root: string, args: string[]): Promise<void> {
+  const output = await new Deno.Command("git", {
+    args: [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test",
+      ...args,
+    ],
+    cwd: root,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!output.success) {
+    throw new Error(new TextDecoder().decode(output.stderr));
+  }
+}
+
+async function waitForReview(url: string): Promise<BoardResponse> {
+  for (let index = 0; index < 80; index++) {
+    const board = await fetch(`${url}/api/board`).then((response) => response.json());
+    if (board.tasks[0]?.status === "review") {
+      return board;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Task did not reach Review.");
+}

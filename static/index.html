@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoalForge</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="masthead">
+        <pre
+          class="ascii"
+          aria-label="GoalForge ASCII title"
+        >
+  ________              __ ______
+ / ____/ /___  ____ _  / // ____/___  _________  ___
+/ / __/ / __ \/ __ `/ / // /_  / __ \/ ___/ __ \/ _ \
+/ /_/ / / /_/ / /_/ / / // __/ / /_/ / /  / /_/ /  __/
+\____/_/\____/\__,_/ /_//_/    \____/_/   \____/\___/
+        </pre>
+        <div class="mastline">
+          <span>LOCAL CODEX ORCHESTRATION</span>
+          <span id="connection">CONNECTING</span>
+        </div>
+      </section>
+
+      <section class="toolbar" aria-label="Goal controls">
+        <input
+          id="goalText"
+          type="text"
+          autocomplete="off"
+          placeholder="Queue a goal for this folder"
+        >
+        <button id="addGoal">ADD GOAL</button>
+        <button id="runNext">RUN NEXT CODEX AGENT</button>
+      </section>
+
+      <section id="board" class="board" aria-label="Kanban board"></section>
+
+      <section class="lower">
+        <aside class="detail">
+          <div class="panel-title">TASK WORKPAD</div>
+          <div id="taskDetail" class="detail-body">Select a task.</div>
+        </aside>
+
+        <section class="command">
+          <div class="panel-title">LIVE COMMAND CENTER</div>
+          <div id="commandCenter" class="command-grid"></div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+.goalforge/
+.deno/
+node_modules/
+coverage/
+
+/.goalforge/

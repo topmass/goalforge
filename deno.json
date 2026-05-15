@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "goalforge": "deno run --allow-read --allow-write --allow-run --allow-net --allow-env src/cli.ts",
+    "check": "deno check src/cli.ts tests/*.ts",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "test": "deno test --allow-read --allow-write --allow-run --allow-net --allow-env"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1.0.19"
+  },
+  "compilerOptions": {
+    "lib": ["deno.ns", "dom", "dom.iterable", "esnext"],
+    "strict": true
+  },
+  "fmt": {
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "semiColons": true,
+    "singleQuote": false
+  }
+}
