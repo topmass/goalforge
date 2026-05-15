@@ -1,6 +1,8 @@
 import { ActivityEvent, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
+import { buildProjectMemory } from "./project_memory.ts";
+import { BoardStore } from "../board/store.ts";
 
 export interface GoalReviewerOptions {
   onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
@@ -30,6 +32,13 @@ export class GoalReviewer {
     }
     let responseText = "";
     const projectInstructions = await collectAgentsInstructions(this.root);
+    const store = new BoardStore(this.root);
+    let projectMemory = "";
+    try {
+      projectMemory = buildProjectMemory(store);
+    } finally {
+      store.close();
+    }
     const codex = this.createCodexClient((event) => {
       if (event.role === "codex" && event.kind === "agent") {
         responseText += event.message;
@@ -47,7 +56,7 @@ export class GoalReviewer {
       const session = await codex.startSession(task.worktreePath);
       await codex.runTurn(session, {
         title: `${task.id}: review`,
-        prompt: buildReviewPrompt(task, projectInstructions),
+        prompt: buildReviewPrompt(task, projectInstructions, projectMemory),
       });
       return parseReviewResponse(responseText);
     } finally {
@@ -65,13 +74,16 @@ export function parseReviewResponse(responseText: string): ReviewResult {
   return { verdict, notes };
 }
 
-function buildReviewPrompt(task: Task, projectInstructions: string): string {
+function buildReviewPrompt(task: Task, projectInstructions: string, projectMemory: string): string {
   return `You are the GoalForge reviewer for one local coding task.
 
 Review the implementation in this assigned worktree. Do not modify files.
 
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
+
+Current GoalForge board memory:
+${projectMemory}
 
 Task:
 - ID: ${task.id}

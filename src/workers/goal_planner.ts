@@ -3,6 +3,7 @@ import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 
 export interface GoalPlannerOptions {
   onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  projectMemory?: string;
   createCodexClient?: (
     onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
   ) => CodexClient;
@@ -11,6 +12,7 @@ export interface GoalPlannerOptions {
 export class GoalPlanner {
   readonly root: string;
   readonly onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  readonly projectMemory?: string;
   readonly createCodexClient: (
     onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
   ) => CodexClient;
@@ -18,6 +20,7 @@ export class GoalPlanner {
   constructor(root: string, options: GoalPlannerOptions = {}) {
     this.root = root;
     this.onEvent = options.onEvent;
+    this.projectMemory = options.projectMemory;
     this.createCodexClient = options.createCodexClient ??
       ((onEvent) => new CodexAppServerClient(onEvent));
   }
@@ -41,7 +44,7 @@ export class GoalPlanner {
       const session = await codex.startSession(this.root);
       await codex.runTurn(session, {
         title: "GoalForge goal compiler",
-        prompt: buildPlannerPrompt(goalText),
+        prompt: buildPlannerPrompt(goalText, this.projectMemory),
       });
       return parsePlannerResponse(responseText);
     } finally {
@@ -85,7 +88,10 @@ export function parsePlannerResponse(responseText: string): TaskDraft[] {
   return drafts;
 }
 
-function buildPlannerPrompt(goalText: string): string {
+function buildPlannerPrompt(
+  goalText: string,
+  projectMemory = "No project memory was supplied.",
+): string {
   return `You are the GoalForge prompt compiler for a local coding project.
 
 Turn the user's rough feature request into one strong Codex-ready goal prompt.
@@ -103,6 +109,9 @@ Rules:
 - Mention dependency, parallelization, or delegation notes in workpad.
 - Do not ask the user follow-up questions. Make reasonable assumptions and encode them in the prompt.
 - Do not include unrelated cleanup.
+
+Current GoalForge board memory:
+${projectMemory}
 
 User goal:
 ${goalText}

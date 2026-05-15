@@ -7,6 +7,7 @@ import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
+import { buildProjectMemory } from "../workers/project_memory.ts";
 
 export interface GoalForgeServer {
   url: string;
@@ -131,6 +132,7 @@ export function startServer(
             return json({ error: "Goal text is required." }, 400);
           }
           const planner = new GoalPlanner(normalizedRoot, {
+            projectMemory: buildProjectMemory(store),
             createCodexClient: options.createCodexClient,
             onEvent: (event) => {
               const activity = store.appendEvent(

@@ -8,6 +8,7 @@ export interface ScheduleDecision {
 
 export interface GoalSchedulerOptions {
   onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  projectMemory?: string;
   createCodexClient?: (
     onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
   ) => CodexClient;
@@ -50,7 +51,7 @@ export class GoalScheduler {
       const session = await codex.startSession(this.root);
       await codex.runTurn(session, {
         title: "GoalForge scheduler",
-        prompt: buildSchedulerPrompt(tasks, maxConcurrency),
+        prompt: buildSchedulerPrompt(tasks, maxConcurrency, this.options.projectMemory),
       });
       const decision = parseSchedulerResponse(responseText, tasks, maxConcurrency);
       if (!decision.taskIds.length) {
@@ -80,7 +81,11 @@ export function parseSchedulerResponse(
   };
 }
 
-function buildSchedulerPrompt(tasks: Task[], maxConcurrency: number): string {
+function buildSchedulerPrompt(
+  tasks: Task[],
+  maxConcurrency: number,
+  projectMemory = "No project memory was supplied.",
+): string {
   const taskList = tasks.map((task) => ({
     id: task.id,
     title: task.title,
@@ -101,6 +106,9 @@ Rules:
 - Pick independent tasks only. Avoid parallelizing tasks that likely edit the same files, depend on each other, or need the result of another task.
 - Prefer higher priority when independence is uncertain.
 - Notes should explain why the chosen tasks can run together or why only one should run.
+
+Current GoalForge board memory:
+${projectMemory}
 
 Dispatchable tasks:
 ${JSON.stringify(taskList, null, 2)}

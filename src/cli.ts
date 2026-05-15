@@ -6,6 +6,7 @@ import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
+import { buildProjectMemory } from "./workers/project_memory.ts";
 
 const root = normalizeRoot(Deno.cwd());
 const [command, ...args] = Deno.args;
@@ -81,6 +82,7 @@ async function goalCommand(args: string[]): Promise<void> {
     store.initProject();
     await ensureGitRepository(root);
     const planner = new GoalPlanner(root, {
+      projectMemory: buildProjectMemory(store),
       onEvent: (event) => {
         if (event.message.trim()) {
           console.log(`[compiler] ${event.kind} ${event.message}`);

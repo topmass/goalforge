@@ -5,6 +5,7 @@ import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git
 import { GoalScheduler } from "./goal_scheduler.ts";
 import { GoalTestEngineer } from "./goal_test_engineer.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
+import { buildProjectMemory } from "./project_memory.ts";
 import { PROMPTS } from "../board/prompts.ts";
 
 export interface GoalForgeWorkerOptions {
@@ -46,6 +47,7 @@ export class GoalForgeWorker {
         break;
       }
       const scheduler = new GoalScheduler(this.root, {
+        projectMemory: buildProjectMemory(this.store),
         createCodexClient: this.createCodexClient,
         onEvent: (event) => {
           this.emit(this.store.appendEvent(null, null, event.role, event.kind, event.message));
@@ -105,6 +107,7 @@ export class GoalForgeWorker {
     try {
       const assignment = await prepareTaskWorktree(this.root, task);
       const projectInstructions = await collectAgentsInstructions(this.root);
+      const projectMemory = buildProjectMemory(this.store);
       task = this.store.assignWorktree(task.id, assignment.branchName, assignment.worktreePath);
       this.emit(
         this.store.appendEvent(
@@ -140,9 +143,9 @@ export class GoalForgeWorker {
 
       const turn = await codex.runTurn(session, {
         title: `${task.id}: ${task.title}`,
-        prompt: buildWorkerPrompt(this.root, task, projectInstructions),
+        prompt: buildWorkerPrompt(this.root, task, projectInstructions, projectMemory),
       });
-      const testEngineer = new GoalTestEngineer(projectInstructions, {
+      const testEngineer = new GoalTestEngineer(projectInstructions, projectMemory, {
         onEvent: (event) => {
           this.emit(
             this.store.appendEvent(
@@ -219,7 +222,12 @@ export class GoalForgeWorker {
   }
 }
 
-function buildWorkerPrompt(root: string, task: Task, projectInstructions: string): string {
+function buildWorkerPrompt(
+  root: string,
+  task: Task,
+  projectInstructions: string,
+  projectMemory: string,
+): string {
   const instructions = [
     ["constitution.md", PROMPTS["constitution.md"]],
     ["project.md", PROMPTS["project.md"]],
@@ -235,6 +243,9 @@ ${instructions}
 
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
+
+Current GoalForge board memory:
+${projectMemory}
 
 Task:
 - ID: ${task.id}

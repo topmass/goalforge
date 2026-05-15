@@ -135,6 +135,7 @@ class TestCodexClient implements CodexClient {
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
     if (_input.title === "GoalForge goal compiler") {
+      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -157,6 +158,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": review")) {
+      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -173,6 +175,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title === "GoalForge scheduler") {
+      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -192,6 +195,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": test-engineer")) {
+      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -207,6 +211,7 @@ class TestCodexClient implements CodexClient {
       };
     }
 
+    assertStringIncludes(_input.prompt, "Current GoalForge board memory");
     await Deno.writeTextFile(`${session.cwd}/server-test.txt`, "server worker output\n");
     this.onEvent({
       taskId: null,
