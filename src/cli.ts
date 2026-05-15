@@ -4,6 +4,7 @@ import { normalizeRoot } from "./paths.ts";
 import { startServer } from "./web/server.ts";
 import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
+import { GoalReviewer } from "./workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
 
 const root = normalizeRoot(Deno.cwd());
@@ -32,6 +33,9 @@ try {
       break;
     case "merge":
       await mergeCommand(args);
+      break;
+    case "review":
+      await reviewCommand(args);
       break;
     case undefined:
     case "-h":
@@ -193,6 +197,40 @@ async function mergeCommand(args: string[]): Promise<void> {
   }
 }
 
+async function reviewCommand(args: string[]): Promise<void> {
+  const taskId = args[0];
+  if (!taskId) {
+    throw new Error("Task id is required.");
+  }
+
+  const store = new BoardStore(root);
+  try {
+    const task = store.getTask(taskId);
+    if (task.status !== "review") {
+      throw new Error(`${task.id} must be in Review before review.`);
+    }
+    const reviewer = new GoalReviewer({
+      onEvent: (event) => {
+        if (event.message.trim()) {
+          console.log(`[reviewer] ${event.kind} ${event.message}`);
+        }
+      },
+    });
+    const result = await reviewer.review(task);
+    const reviewText = [
+      task.validation,
+      "",
+      `GoalForge review: ${result.verdict.toUpperCase()}`,
+      result.notes,
+    ].filter(Boolean).join("\n");
+    store.updateTaskValidation(task.id, reviewText);
+    store.appendEvent(task.id, null, "reviewer", "review", result.verdict);
+    console.log(`${task.id} review ${result.verdict}.`);
+  } finally {
+    store.close();
+  }
+}
+
 function statusCommand(): void {
   usingStore((store) => {
     const board = store.getBoard();
@@ -221,6 +259,7 @@ Usage:
   goalforge plan "<goal text>"
   goalforge run [TASK-ID]
   goalforge run --all [--limit N]
+  goalforge review TASK-ID
   goalforge serve [--port 4733]
   goalforge board [--port 4733]
   goalforge merge TASK-ID

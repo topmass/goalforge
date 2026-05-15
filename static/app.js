@@ -165,6 +165,7 @@ function renderDetail() {
     <pre>${escapeHtml(task.validation || "not recorded")}</pre>
     <div class="detail-actions">
       <button data-action="run">RUN CODEX</button>
+      <button data-action="review">REVIEW</button>
       <button data-action="merge">MERGE</button>
       <button data-action="ready">MOVE READY</button>
       <button data-action="blocked">BLOCK</button>
@@ -173,6 +174,11 @@ function renderDetail() {
   `;
   detailEl.querySelector('[data-action="run"]').addEventListener("click", () => {
     postJson(`/api/tasks/${encodeURIComponent(task.id)}/run`, {});
+  });
+  detailEl.querySelector('[data-action="review"]').addEventListener("click", async () => {
+    await postJson(`/api/tasks/${encodeURIComponent(task.id)}/review`, {})
+      .catch((error) => alert(error.message));
+    await loadBoard();
   });
   detailEl.querySelector('[data-action="merge"]').addEventListener("click", async () => {
     await postJson(`/api/tasks/${encodeURIComponent(task.id)}/merge`, {})

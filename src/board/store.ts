@@ -452,7 +452,7 @@ function ensureGitignore(root: string): void {
     current = "";
   }
 
-  const required = ["/.goalforge/"];
+  const required = ["/.goalforge/", "/.omx/"];
   const additions = required.filter((entry) => !current.split(/\r?\n/).includes(entry));
   if (additions.length) {
     const prefix = current && !current.endsWith("\n") ? "\n" : "";

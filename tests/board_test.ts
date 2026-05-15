@@ -10,6 +10,7 @@ Deno.test("init creates local runtime files and prompt templates", () => {
     assertEquals(Deno.statSync(`${root}/.goalforge/config.json`).isFile, true);
     assertEquals(Deno.statSync(`${root}/.goalforge/prompts/constitution.md`).isFile, true);
     assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.goalforge/");
+    assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.omx/");
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });

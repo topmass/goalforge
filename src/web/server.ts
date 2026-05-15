@@ -5,6 +5,7 @@ import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
+import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 
 export interface GoalForgeServer {
@@ -220,6 +221,47 @@ export function startServer(
             );
             broadcastActivity(result.event);
           }
+          return json({ ok: true });
+        }
+
+        const reviewMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/review$/);
+        if (reviewMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(reviewMatch[1]);
+          const task = store.getTask(taskId);
+          if (task.status !== "review") {
+            return json({ error: `${task.id} must be in Review before review.` }, 400);
+          }
+          queueMicrotask(() => {
+            const reviewer = new GoalReviewer({
+              createCodexClient: options.createCodexClient,
+              onEvent: (event) => {
+                const activity = store.appendEvent(
+                  event.taskId,
+                  null,
+                  event.role,
+                  event.kind,
+                  event.message,
+                );
+                broadcastActivity(activity);
+              },
+            });
+            reviewer.review(task).then((result) => {
+              const latest = store.getTask(task.id);
+              const reviewText = [
+                latest.validation,
+                "",
+                `GoalForge review: ${result.verdict.toUpperCase()}`,
+                result.notes,
+              ].filter(Boolean).join("\n");
+              store.updateTaskValidation(task.id, reviewText);
+              broadcastActivity(
+                store.appendEvent(task.id, null, "reviewer", "review", result.verdict),
+              );
+            }).catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              broadcast("error", { message });
+            });
+          });
           return json({ ok: true });
         }
 

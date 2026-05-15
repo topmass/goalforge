@@ -39,6 +39,14 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
     assertStringIncludes(board.tasks[0].validation, "Commit:");
 
+    const reviewResponse = await fetch(`${server.url}/api/tasks/TASK-1/review`, {
+      method: "POST",
+    });
+    assertEquals(reviewResponse.ok, true);
+    await reviewResponse.json();
+    const reviewedBoard = await waitForReviewEvidence(server.url);
+    assertStringIncludes(reviewedBoard.tasks[0].validation, "GoalForge review: APPROVED");
+
     const mergeResponse = await fetch(`${server.url}/api/tasks/TASK-1/merge`, {
       method: "POST",
     });
@@ -115,6 +123,22 @@ class TestCodexClient implements CodexClient {
       };
     }
 
+    if (_input.title.endsWith(": review")) {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "APPROVED\n- Validation covers the task.",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-review-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     await Deno.writeTextFile(`${session.cwd}/server-test.txt`, "server worker output\n");
     this.onEvent({
       taskId: null,
@@ -163,4 +187,15 @@ async function waitForReview(url: string): Promise<BoardResponse> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("Task did not reach Review.");
+}
+
+async function waitForReviewEvidence(url: string): Promise<BoardResponse> {
+  for (let index = 0; index < 80; index++) {
+    const board = await fetch(`${url}/api/board`).then((response) => response.json());
+    if (board.tasks[0]?.validation.includes("GoalForge review: APPROVED")) {
+      return board;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Task did not receive review evidence.");
 }

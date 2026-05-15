@@ -88,6 +88,8 @@ Suggested first vertical slice:
 - goalforge run or a GUI button starts a real Codex worker that streams activity into the command
   center and moves a task through In Progress -> Review.
 - goalforge run --all or the GUI Run Queue action processes queued tasks one at a time.
+- goalforge review or the GUI Review action starts a Codex reviewer and appends review evidence to
+  the task before merge.
 - Codex App Server client exists behind an interface and is the default production worker path.
 - Tests may use injected controlled Codex clients only to avoid spending turns during automated
   checks.
