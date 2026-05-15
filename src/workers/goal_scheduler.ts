@@ -1,4 +1,4 @@
-import { ActivityEvent, Task } from "../board/types.ts";
+import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 
 export interface ScheduleDecision {
@@ -7,16 +7,16 @@ export interface ScheduleDecision {
 }
 
 export interface GoalSchedulerOptions {
-  onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  onEvent?: (event: ActivityEventInput) => void;
   projectMemory?: string;
   createCodexClient?: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 }
 
 export class GoalScheduler {
   readonly createCodexClient: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 
   constructor(private readonly root: string, private readonly options: GoalSchedulerOptions = {}) {
@@ -44,6 +44,7 @@ export class GoalScheduler {
         role: "scheduler",
         kind: event.kind,
         message: event.message,
+        raw: event.raw,
       });
     });
 

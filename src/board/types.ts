@@ -66,7 +66,12 @@ export interface ActivityEvent {
   kind: string;
   message: string;
   createdAt: string;
+  rawJson: string | null;
 }
+
+export type ActivityEventInput = Omit<ActivityEvent, "id" | "createdAt" | "rawJson"> & {
+  raw?: unknown;
+};
 
 export interface BoardSnapshot {
   goals: Goal[];

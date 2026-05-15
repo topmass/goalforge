@@ -142,3 +142,18 @@ Deno.test("started stuck tasks can be deleted from the board", () => {
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("events keep readable activity and raw protocol payloads", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    store.appendEvent(null, null, "codex", "turn", "Started turn.", { turn: { id: "turn-1" } });
+    const event = store.getBoard().events.at(-1);
+    assertEquals(event?.message, "Started turn.");
+    assertStringIncludes(event?.rawJson ?? "", "turn-1");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});

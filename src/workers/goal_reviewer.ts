@@ -1,13 +1,13 @@
-import { ActivityEvent, Task } from "../board/types.ts";
+import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { BoardStore } from "../board/store.ts";
 
 export interface GoalReviewerOptions {
-  onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  onEvent?: (event: ActivityEventInput) => void;
   createCodexClient?: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 }
 
@@ -18,7 +18,7 @@ export interface ReviewResult {
 
 export class GoalReviewer {
   readonly createCodexClient: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 
   constructor(private readonly root: string, private readonly options: GoalReviewerOptions = {}) {

@@ -12,6 +12,7 @@ import {
 import { PROMPTS } from "./prompts.ts";
 import {
   ActivityEvent,
+  ActivityEventInput,
   BoardSnapshot,
   Goal,
   Run,
@@ -311,11 +312,13 @@ export class BoardStore {
     role: string,
     kind: string,
     message: string,
+    raw?: unknown,
   ): ActivityEvent {
     const now = timestamp();
+    const rawJson = raw === undefined ? null : JSON.stringify(raw);
     const result = this.db.prepare(
-      "INSERT INTO events (task_id, run_id, role, kind, message, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run(taskId, runId, role, kind, message, now);
+      "INSERT INTO events (task_id, run_id, role, kind, message, created_at, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(taskId, runId, role, kind, message, now, rawJson);
     return {
       id: Number(result.lastInsertRowid),
       taskId,
@@ -324,7 +327,19 @@ export class BoardStore {
       kind,
       message,
       createdAt: now,
+      rawJson,
     };
+  }
+
+  appendAgentEvent(event: ActivityEventInput): ActivityEvent {
+    return this.appendEvent(
+      event.taskId,
+      event.runId,
+      event.role,
+      event.kind,
+      event.message,
+      event.raw,
+    );
   }
 
   enqueueMessage(taskId: string, role: string, message: string): void {
@@ -375,7 +390,8 @@ export class BoardStore {
         role TEXT NOT NULL,
         kind TEXT NOT NULL,
         message TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        raw_json TEXT
       );
 
       CREATE TABLE IF NOT EXISTS file_claims (
@@ -396,6 +412,16 @@ export class BoardStore {
         created_at TEXT NOT NULL
       );
     `);
+    this.ensureColumn("events", "raw_json", "TEXT");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+      name: string;
+    }>;
+    if (!columns.some((row) => row.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
   private listGoals(): Goal[] {
@@ -565,6 +591,7 @@ function eventFromRow(row: SqlRow): ActivityEvent {
     kind: String(row.kind),
     message: String(row.message),
     createdAt: String(row.created_at),
+    rawJson: nullableString(row.raw_json),
   };
 }
 

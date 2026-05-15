@@ -1,5 +1,5 @@
 import { BoardStore } from "../board/store.ts";
-import { ActivityEvent, Task } from "../board/types.ts";
+import { ActivityEvent, ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
 import { GoalScheduler } from "./goal_scheduler.ts";
@@ -11,7 +11,7 @@ import { PROMPTS } from "../board/prompts.ts";
 export interface GoalForgeWorkerOptions {
   onEvent?: (event: ActivityEvent) => void;
   createCodexClient?: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 }
 
@@ -20,7 +20,7 @@ export class GoalForgeWorker {
   readonly store: BoardStore;
   readonly onEvent?: (event: ActivityEvent) => void;
   readonly createCodexClient: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 
   constructor(root: string, store: BoardStore, options: GoalForgeWorkerOptions = {}) {
@@ -50,7 +50,7 @@ export class GoalForgeWorker {
         projectMemory: buildProjectMemory(this.store),
         createCodexClient: this.createCodexClient,
         onEvent: (event) => {
-          this.emit(this.store.appendEvent(null, null, event.role, event.kind, event.message));
+          this.emit(this.store.appendAgentEvent(event));
         },
       });
       const remaining = limit === Number.POSITIVE_INFINITY
@@ -100,6 +100,7 @@ export class GoalForgeWorker {
           event.role,
           event.kind,
           event.message,
+          event.raw,
         ),
       );
     });
@@ -154,6 +155,7 @@ export class GoalForgeWorker {
               event.role,
               event.kind,
               event.message,
+              event.raw,
             ),
           );
         },

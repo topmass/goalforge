@@ -1,20 +1,20 @@
-import { ActivityEvent, TaskDraft } from "../board/types.ts";
+import { ActivityEventInput, TaskDraft } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 
 export interface GoalPlannerOptions {
-  onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  onEvent?: (event: ActivityEventInput) => void;
   projectMemory?: string;
   createCodexClient?: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 }
 
 export class GoalPlanner {
   readonly root: string;
-  readonly onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  readonly onEvent?: (event: ActivityEventInput) => void;
   readonly projectMemory?: string;
   readonly createCodexClient: (
-    onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
+    onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
 
   constructor(root: string, options: GoalPlannerOptions = {}) {
@@ -37,6 +37,7 @@ export class GoalPlanner {
         role: "compiler",
         kind: event.kind,
         message: event.message,
+        raw: event.raw,
       });
     });
 

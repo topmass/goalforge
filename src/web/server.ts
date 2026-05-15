@@ -1,6 +1,6 @@
 import path from "node:path";
 import { BoardStore } from "../board/store.ts";
-import { ActivityEvent, TaskStatus } from "../board/types.ts";
+import { ActivityEvent, ActivityEventInput, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
@@ -20,13 +20,7 @@ type Client = ReadableStreamDefaultController<Uint8Array>;
 export interface GoalForgeServerOptions {
   createCodexClient?: (
     onEvent: (
-      event: {
-        taskId: string | null;
-        runId: string | null;
-        role: string;
-        kind: string;
-        message: string;
-      },
+      event: ActivityEventInput,
     ) => void,
   ) => CodexClient;
 }
@@ -135,13 +129,7 @@ export function startServer(
             projectMemory: buildProjectMemory(store),
             createCodexClient: options.createCodexClient,
             onEvent: (event) => {
-              const activity = store.appendEvent(
-                null,
-                null,
-                event.role,
-                event.kind,
-                event.message,
-              );
+              const activity = store.appendAgentEvent(event);
               broadcastActivity(activity);
             },
           });
@@ -160,13 +148,7 @@ export function startServer(
           const planner = new GoalPlanner(normalizedRoot, {
             createCodexClient: options.createCodexClient,
             onEvent: (event) => {
-              const activity = store.appendEvent(
-                null,
-                null,
-                event.role,
-                event.kind,
-                event.message,
-              );
+              const activity = store.appendAgentEvent(event);
               broadcastActivity(activity);
             },
           });
@@ -275,13 +257,7 @@ export function startServer(
             const reviewer = new GoalReviewer(normalizedRoot, {
               createCodexClient: options.createCodexClient,
               onEvent: (event) => {
-                const activity = store.appendEvent(
-                  event.taskId,
-                  null,
-                  event.role,
-                  event.kind,
-                  event.message,
-                );
+                const activity = store.appendAgentEvent(event);
                 broadcastActivity(activity);
               },
             });

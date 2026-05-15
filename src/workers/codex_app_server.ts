@@ -1,7 +1,7 @@
-import { ActivityEvent } from "../board/types.ts";
+import { ActivityEventInput } from "../board/types.ts";
 
 export interface CodexEventHandler {
-  (event: Omit<ActivityEvent, "id" | "createdAt"> & { raw?: unknown }): void;
+  (event: ActivityEventInput): void;
 }
 
 export interface CodexSession {

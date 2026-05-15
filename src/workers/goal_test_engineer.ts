@@ -1,4 +1,4 @@
-import { ActivityEvent, Task } from "../board/types.ts";
+import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexSession, CodexTurnResult } from "./codex_app_server.ts";
 
 export interface TurnRunner {
@@ -9,7 +9,7 @@ export interface TurnRunner {
 }
 
 export interface GoalTestEngineerOptions {
-  onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
+  onEvent?: (event: ActivityEventInput) => void;
 }
 
 export class GoalTestEngineer {
