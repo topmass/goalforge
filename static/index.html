@@ -33,21 +33,17 @@
           placeholder="Queue a goal for this folder"
         >
         <button id="addGoal">ADD GOAL</button>
-        <button id="startGoalforge">START GOALFORGE</button>
+        <button id="startGoalforge">START READY GOALS</button>
       </section>
 
       <section id="board" class="board" aria-label="Kanban board"></section>
 
-      <section class="lower">
-        <aside class="detail">
-          <div class="panel-title">TASK WORKPAD</div>
-          <div id="taskDetail" class="detail-body">Select a task.</div>
-        </aside>
-
-        <section class="command">
-          <div class="panel-title">LIVE COMMAND CENTER</div>
-          <div id="commandCenter" class="command-grid"></div>
-        </section>
+      <section class="command">
+        <div class="panel-title">
+          <span>LIVE COMMAND CENTER</span>
+          <span id="selectedTask">NO SELECTION</span>
+        </div>
+        <div id="commandCenter" class="command-grid"></div>
       </section>
     </main>
     <script src="/app.js"></script>

@@ -48,9 +48,9 @@ Core product requirements:
 
 - Inbox
 - Ready
-- In Progress
+- Started
 - Review
-- Blocked
+- Waiting
 - Done
 
 13. Add state-transition validation so agents can request transitions but the daemon arbitrates
@@ -88,7 +88,7 @@ Suggested first vertical slice:
 - goalforge serve starts the daemon and GUI.
 - GUI displays the kanban board and command center.
 - goalforge run or a GUI button starts a real Codex worker that streams activity into the command
-  center and moves a task through In Progress -> Review.
+  center and moves a task through Started -> Review.
 - goalforge run or the GUI Start GoalForge action asks the scheduler which queued goals can run
   together and processes a safe batch.
 - goalforge review or the GUI Review action starts a Codex reviewer and appends review evidence to

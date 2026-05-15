@@ -104,3 +104,17 @@ Deno.test("running runs prevent duplicate task claims", () => {
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("queued tasks can be deleted before they start", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Remove this queued goal");
+    store.deleteTask(task.id);
+    assertEquals(store.getBoard().tasks.length, 0);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});

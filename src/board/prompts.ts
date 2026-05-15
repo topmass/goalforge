@@ -27,9 +27,9 @@ GoalForge agents work from local board tasks, not external trackers. The daemon 
 Board states:
 - Inbox: raw or unrefined work.
 - Ready: unblocked and dispatchable.
-- In Progress: actively owned by an agent.
+- Started: actively owned by an agent.
 - Review: implementation claims are complete and validation evidence exists.
-- Blocked: cannot proceed without new information or dependency resolution.
+- Waiting: cannot proceed without new information or dependency resolution.
 - Done: reviewed and accepted.
 
 Agents report workpad notes in their final handoff. The daemon records those notes on the board. If an agent is busy, incoming requests are queued as board events instead of interrupting its current task.
@@ -40,7 +40,7 @@ Implement exactly one task. Use the task acceptance criteria as the boundary. Re
 `,
   "reviewer.md": `# Reviewer Role
 
-Review the diff, validation, and scope. Move the task to Done only when the evidence covers the acceptance criteria. Otherwise request rework by returning the task to In Progress or Blocked with a clear reason.
+Review the diff, validation, and scope. Move the task to Done only when the evidence covers the acceptance criteria. Otherwise request rework by returning the task to Started or Waiting with a clear reason.
 `,
   "planner.md": `# Planner Role
 

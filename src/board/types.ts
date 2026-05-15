@@ -12,9 +12,9 @@ export type TaskStatus = typeof TASK_STATUSES[number];
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   inbox: "Inbox",
   ready: "Ready",
-  in_progress: "In Progress",
+  in_progress: "Started",
   review: "Review",
-  blocked: "Blocked",
+  blocked: "Waiting",
   done: "Done",
 };
 

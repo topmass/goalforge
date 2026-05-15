@@ -63,6 +63,12 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
       body: JSON.stringify({ text: "Plan through the GUI path" }),
     }).then((response) => response.json());
     assertEquals(planned.tasks.length, 1);
+
+    const deleteResponse = await fetch(`${server.url}/api/tasks/${planned.tasks[0].id}`, {
+      method: "DELETE",
+    });
+    assertEquals(deleteResponse.ok, true);
+    await deleteResponse.json();
   } finally {
     server.shutdown();
     await server.finished.catch(() => {});

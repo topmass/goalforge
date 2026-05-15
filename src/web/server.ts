@@ -42,6 +42,7 @@ export function startServer(
   store.initProject();
   const clients = new Set<Client>();
   const encoder = new TextEncoder();
+  let queueRunning = false;
 
   const send = (client: Client, type: string, payload: unknown) => {
     try {
@@ -59,6 +60,26 @@ export function startServer(
   const broadcastActivity = (event: ActivityEvent) => {
     broadcast("activity", event);
     broadcastBoard();
+  };
+  const startQueue = () => {
+    if (queueRunning) {
+      return;
+    }
+    queueRunning = true;
+    queueMicrotask(() => {
+      const worker = new GoalForgeWorker(normalizedRoot, store, {
+        onEvent: broadcastActivity,
+        createCodexClient: options.createCodexClient,
+      });
+      worker.runQueue().then(() => {
+        queueRunning = false;
+        broadcastBoard();
+      }).catch((error) => {
+        queueRunning = false;
+        const message = error instanceof Error ? error.message : String(error);
+        broadcast("error", { message });
+      });
+    });
   };
 
   const abort = new AbortController();
@@ -168,17 +189,8 @@ export function startServer(
         }
 
         if (url.pathname === "/api/run-queue" && request.method === "POST") {
-          queueMicrotask(() => {
-            const worker = new GoalForgeWorker(normalizedRoot, store, {
-              onEvent: broadcastActivity,
-              createCodexClient: options.createCodexClient,
-            });
-            worker.runQueue().then(() => broadcastBoard()).catch((error) => {
-              const message = error instanceof Error ? error.message : String(error);
-              broadcast("error", { message });
-            });
-          });
-          return json({ ok: true });
+          startQueue();
+          return json({ ok: true, running: queueRunning });
         }
 
         const runMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/run$/);
@@ -194,6 +206,14 @@ export function startServer(
               broadcast("error", { message });
             });
           });
+          return json({ ok: true, taskId });
+        }
+
+        const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+        if (deleteMatch && request.method === "DELETE") {
+          const taskId = decodeURIComponent(deleteMatch[1]);
+          store.deleteTask(taskId);
+          broadcastBoard();
           return json({ ok: true, taskId });
         }
 

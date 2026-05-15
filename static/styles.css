@@ -148,6 +148,10 @@ input:focus {
 }
 
 .task-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--muted);
   font-size: 11px;
   margin-bottom: 7px;
@@ -168,53 +172,30 @@ input:focus {
   font-size: 11px;
 }
 
-.lower {
+.card-actions {
   display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.6fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   margin-top: 8px;
 }
 
-.detail,
+.card-action {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.card-action.danger {
+  border-color: var(--line);
+  background: var(--bg);
+  color: var(--muted);
+}
+
 .command {
   border: 1px solid var(--line);
   background: rgba(6, 6, 6, 0.94);
   min-height: 330px;
-}
-
-.detail-body {
-  padding: 12px;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-
-.detail-body h3 {
-  margin: 0 0 10px;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.detail-body pre {
-  white-space: pre-wrap;
-  border: 1px solid var(--line);
-  padding: 10px;
-  color: var(--ink);
-  background: #050505;
-}
-
-.detail-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
   margin-top: 12px;
-}
-
-.detail-actions button {
-  min-height: 34px;
-  padding: 0 8px;
-  font-size: 11px;
 }
 
 .command-grid {
@@ -249,8 +230,12 @@ input:focus {
 }
 
 .terminal-line {
+  display: grid;
+  grid-template-columns: 76px 88px minmax(0, 1fr);
+  gap: 8px;
   white-space: pre-wrap;
   word-break: break-word;
+  align-items: start;
 }
 
 .terminal-line .time {
@@ -261,12 +246,15 @@ input:focus {
   color: var(--muted);
 }
 
+.terminal-line .message {
+  min-width: 0;
+}
+
 @media (max-width: 1200px) {
   .board {
     grid-template-columns: repeat(3, minmax(190px, 1fr));
   }
 
-  .lower,
   .command-grid {
     grid-template-columns: 1fr;
   }

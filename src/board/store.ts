@@ -142,6 +142,15 @@ export class BoardStore {
     return goalFromRow(row);
   }
 
+  deleteTask(taskId: string): void {
+    const task = this.getTask(taskId);
+    if (!["inbox", "ready", "blocked"].includes(task.status) || task.branchName) {
+      throw new Error(`${task.id} has already started and cannot be deleted from the board.`);
+    }
+    this.db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
+    this.appendEvent(null, null, "user", "delete", `Deleted ${taskId}.`);
+  }
+
   findDispatchableTask(): Task | null {
     const row = this.db.prepare(`
       SELECT * FROM tasks
