@@ -30,6 +30,7 @@ interface PendingRequest {
 
 export interface CodexClient {
   startSession(cwd: string): Promise<CodexSession>;
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession>;
   runTurn(session: CodexSession, input: CodexTurnInput): Promise<CodexTurnResult>;
   stop(): Promise<void>;
 }
@@ -74,6 +75,31 @@ export class CodexAppServerClient implements CodexClient {
     const thread = response.thread as { id?: string } | undefined;
     if (!thread?.id) {
       throw new Error("Codex App Server did not return a thread id.");
+    }
+    return { threadId: thread.id, cwd };
+  }
+
+  async resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    await this.start(cwd);
+    await this.request("initialize", {
+      capabilities: { experimentalApi: true },
+      clientInfo: {
+        name: "goalforge",
+        title: "GoalForge",
+        version: "0.1.0",
+      },
+    });
+    await this.notify("initialized", {});
+    const response = await this.request("thread/resume", {
+      threadId,
+      cwd,
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandbox: "danger-full-access",
+    });
+    const thread = response.thread as { id?: string } | undefined;
+    if (!thread?.id) {
+      throw new Error("Codex App Server did not return a resumed thread id.");
     }
     return { threadId: thread.id, cwd };
   }

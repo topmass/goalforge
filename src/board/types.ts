@@ -33,6 +33,7 @@ export interface Task {
   priority: number;
   branchName: string | null;
   worktreePath: string | null;
+  threadId: string | null;
   workpad: string;
   acceptanceCriteria: string;
   validation: string;

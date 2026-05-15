@@ -36,10 +36,34 @@ Deno.test("worker assigns worktree, streams Codex events, and moves task to revi
     assertEquals(updated.status, "review");
     assert(updated.branchName?.startsWith("goalforge/task-1"));
     assert(updated.worktreePath?.includes(".goalforge/worktrees/TASK-1"));
+    assertEquals(updated.threadId, "thread-test");
     assertStringIncludes(updated.validation, "Codex App Server turn completed");
     assertStringIncludes(updated.validation, "Commit:");
     assertStringIncludes(updated.validation, "Test turn:");
     assert(streamed.some((line) => line.includes("test Codex implementation output")));
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("worker resumes an existing task thread for continuation turns", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const resumed: string[] = [];
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Continue reviewed work");
+    const worker = new GoalForgeWorker(root, store, {
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent, resumed),
+    });
+    await worker.runTask(task.id);
+    const first = store.getTask(task.id);
+    assertEquals(first.status, "review");
+    await worker.runTask(task.id);
+    assertEquals(resumed, ["thread-test"]);
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -94,6 +118,7 @@ class TestCodexClient implements CodexClient {
         message: string;
       },
     ) => void,
+    private readonly resumed: string[] = [],
   ) {}
 
   startSession(cwd: string): Promise<CodexSession> {
@@ -105,6 +130,11 @@ class TestCodexClient implements CodexClient {
       message: "test Codex thread started",
     });
     return Promise.resolve({ threadId: "thread-test", cwd });
+  }
+
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    this.resumed.push(threadId);
+    return Promise.resolve({ threadId, cwd });
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {

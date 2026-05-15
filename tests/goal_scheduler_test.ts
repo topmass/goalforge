@@ -27,6 +27,7 @@ function task(id: string): Task {
     priority: 100,
     branchName: null,
     worktreePath: null,
+    threadId: null,
     workpad: "",
     acceptanceCriteria: "",
     validation: "",

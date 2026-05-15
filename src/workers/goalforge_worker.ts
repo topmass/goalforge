@@ -131,14 +131,18 @@ export class GoalForgeWorker {
           .event,
       );
 
-      const session = await codex.startSession(task.worktreePath ?? assignment.worktreePath);
+      const wasContinuation = Boolean(task.threadId);
+      const session = task.threadId
+        ? await codex.resumeSession(task.worktreePath ?? assignment.worktreePath, task.threadId)
+        : await codex.startSession(task.worktreePath ?? assignment.worktreePath);
+      task = this.store.assignThread(task.id, session.threadId);
       this.emit(
         this.store.appendEvent(
           task.id,
           run.id,
           "worker",
           "thread",
-          `Started Codex thread ${session.threadId}.`,
+          `${wasContinuation ? "Resumed" : "Started"} Codex thread ${session.threadId}.`,
         ),
       );
 

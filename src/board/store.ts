@@ -85,8 +85,8 @@ export class BoardStore {
       this.db.prepare(`
         INSERT INTO tasks (
           id, goal_id, title, description, status, priority, branch_name, worktree_path,
-          workpad, acceptance_criteria, validation, blocked_reason, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          thread_id, workpad, acceptance_criteria, validation, blocked_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         taskId,
         goalId,
@@ -94,6 +94,7 @@ export class BoardStore {
         draft.description.trim() || trimmed,
         "ready",
         normalizePriority(draft.priority),
+        null,
         null,
         null,
         draft.workpad?.trim() || "Created from GoalForge intake. Awaiting worker handoff.",
@@ -306,6 +307,15 @@ export class BoardStore {
     return this.getTask(taskId);
   }
 
+  assignThread(taskId: string, threadId: string): Task {
+    this.db.prepare("UPDATE tasks SET thread_id = ?, updated_at = ? WHERE id = ?").run(
+      threadId,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
   appendEvent(
     taskId: string | null,
     runId: string | null,
@@ -366,6 +376,7 @@ export class BoardStore {
         priority INTEGER NOT NULL DEFAULT 0,
         branch_name TEXT,
         worktree_path TEXT,
+        thread_id TEXT,
         workpad TEXT NOT NULL DEFAULT '',
         acceptance_criteria TEXT NOT NULL DEFAULT '',
         validation TEXT NOT NULL DEFAULT '',
@@ -412,6 +423,7 @@ export class BoardStore {
         created_at TEXT NOT NULL
       );
     `);
+    this.ensureColumn("tasks", "thread_id", "TEXT");
     this.ensureColumn("events", "raw_json", "TEXT");
   }
 
@@ -562,6 +574,7 @@ function taskFromRow(row: SqlRow): Task {
     priority: Number(row.priority),
     branchName: nullableString(row.branch_name),
     worktreePath: nullableString(row.worktree_path),
+    threadId: nullableString(row.thread_id),
     workpad: String(row.workpad ?? ""),
     acceptanceCriteria: String(row.acceptance_criteria ?? ""),
     validation: String(row.validation ?? ""),

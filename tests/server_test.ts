@@ -133,6 +133,10 @@ class TestCodexClient implements CodexClient {
     return Promise.resolve({ threadId: "thread-server-test", cwd });
   }
 
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId, cwd });
+  }
+
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
     if (_input.title === "GoalForge goal compiler") {
       assertStringIncludes(_input.prompt, "Current GoalForge board memory");
