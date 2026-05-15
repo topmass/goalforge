@@ -1,0 +1,50 @@
+import path from "node:path";
+
+const SKIP_DIRS = new Set([
+  ".git",
+  ".goalforge",
+  ".omx",
+  "node_modules",
+  "vendor",
+  "dist",
+  "build",
+]);
+
+export async function collectAgentsInstructions(root: string): Promise<string> {
+  const files: string[] = [];
+  await collectAgentsFiles(root, root, files);
+  if (!files.length) {
+    return "No project AGENTS.md files were found outside GoalForge runtime folders.";
+  }
+
+  const sections: string[] = [];
+  for (const file of files.slice(0, 20)) {
+    const content = await Deno.readTextFile(path.join(root, file));
+    sections.push(`## ${file}\n${content.trim()}`);
+  }
+  return limitText(sections.join("\n\n"), 12000);
+}
+
+async function collectAgentsFiles(root: string, dir: string, files: string[]): Promise<void> {
+  for await (const entry of Deno.readDir(dir)) {
+    const fullPath = path.join(dir, entry.name);
+    const relative = path.relative(root, fullPath);
+    if (entry.isDirectory) {
+      if (!SKIP_DIRS.has(entry.name)) {
+        await collectAgentsFiles(root, fullPath, files);
+      }
+      continue;
+    }
+    if (entry.isFile && entry.name === "AGENTS.md") {
+      files.push(relative);
+    }
+  }
+}
+
+function limitText(value: string, maxCharacters: number): string {
+  if (value.length <= maxCharacters) {
+    return value;
+  }
+  return value.slice(0, maxCharacters - 80).trimEnd() +
+    "\n\n[GoalForge truncated AGENTS.md context to keep prompts bounded.]";
+}

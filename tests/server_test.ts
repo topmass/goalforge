@@ -6,6 +6,7 @@ import {
   CodexTurnResult,
 } from "../src/workers/codex_app_server.ts";
 import { startServer } from "../src/web/server.ts";
+import { BoardStore } from "../src/board/store.ts";
 
 Deno.test("server exposes board, creates goals, and runs Codex worker", async () => {
   const root = Deno.makeTempDirSync();
@@ -39,6 +40,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertEquals(board.tasks[0].status, "review");
     assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
     assertStringIncludes(board.tasks[0].validation, "Commit:");
+    assertStringIncludes(board.tasks[0].validation, "Test turn:");
 
     const reviewResponse = await fetch(`${server.url}/api/tasks/TASK-1/review`, {
       method: "POST",
@@ -69,6 +71,39 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     });
     assertEquals(deleteResponse.ok, true);
     await deleteResponse.json();
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("server deletes a started task with a stale running run", async () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Delete stuck started task");
+    store.assignWorktree(task.id, "goalforge/task-1", `${root}/.goalforge/worktrees/TASK-1`);
+    store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.createRun(task.id, "worker");
+  } finally {
+    store.close();
+  }
+
+  const port = 49033 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const deleteResponse = await fetch(`${server.url}/api/tasks/TASK-1`, {
+      method: "DELETE",
+    });
+    assertEquals(deleteResponse.ok, true);
+    await deleteResponse.json();
+    const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+    assertEquals(board.tasks.length, 0);
+    assertEquals(board.runs.length, 0);
   } finally {
     server.shutdown();
     await server.finished.catch(() => {});
@@ -151,6 +186,22 @@ class TestCodexClient implements CodexClient {
       return {
         threadId: session.threadId,
         turnId: "turn-scheduler-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
+    if (_input.title.endsWith(": test-engineer")) {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "test engineer validation output",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-test-engineer",
         status: "completed",
         completed: true,
       };

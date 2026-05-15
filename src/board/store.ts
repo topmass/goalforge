@@ -142,7 +142,7 @@ export class BoardStore {
     return goalFromRow(row);
   }
 
-  deleteTask(taskId: string): void {
+  deleteTask(taskId: string): ActivityEvent {
     const task = this.getTask(taskId);
     if (task.status === "done") {
       throw new Error(`${task.id} is Done and cannot be deleted from the board.`);
@@ -152,7 +152,7 @@ export class BoardStore {
     )
       .run(timestamp(), taskId);
     this.db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
-    this.appendEvent(
+    return this.appendEvent(
       null,
       null,
       "user",

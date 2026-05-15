@@ -89,12 +89,27 @@ input:focus {
 .mastline,
 .panel-title {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   border-top: 1px solid var(--line);
   padding: 8px 10px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.selected-task {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selected-delete {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 .toolbar {

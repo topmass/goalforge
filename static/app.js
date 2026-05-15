@@ -162,21 +162,30 @@ function taskCard(task) {
 
 function renderSelection() {
   const task = state.board.tasks.find((item) => item.id === state.selectedTaskId);
-  selectedTaskEl.textContent = task
-    ? `${task.id} ${labelFor(task.status).toUpperCase()}`
-    : "NO SELECTION";
+  if (!task) {
+    selectedTaskEl.textContent = "NO SELECTION";
+    return;
+  }
+
+  selectedTaskEl.innerHTML = `
+    <span>${escapeHtml(task.id)} ${labelFor(task.status).toUpperCase()}</span>
+    ${
+    task.status !== "done"
+      ? `<button class="selected-delete" data-action="delete-selected">DELETE</button>`
+      : ""
+  }
+  `;
+  const deleteButton = selectedTaskEl.querySelector("[data-action='delete-selected']");
+  deleteButton?.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await deleteTask(task);
+  });
 }
 
 async function handleCardAction(task, action) {
   if (action === "delete") {
-    await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, { method: "DELETE" })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.error || response.statusText);
-        }
-      })
-      .catch((error) => alert(error.message));
+    await deleteTask(task);
+    return;
   }
   if (action === "start") {
     await postJson(`/api/tasks/${encodeURIComponent(task.id)}/run`, {})
@@ -190,6 +199,28 @@ async function handleCardAction(task, action) {
     await postJson(`/api/tasks/${encodeURIComponent(task.id)}/merge`, {})
       .catch((error) => alert(error.message));
   }
+  await loadBoard();
+}
+
+async function deleteTask(task) {
+  await fetch(`/api/tasks/${encodeURIComponent(task.id)}`, { method: "DELETE" })
+    .then(async (response) => {
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || response.statusText);
+      }
+      return response.json();
+    })
+    .then((payload) => {
+      if (state.selectedTaskId === task.id) {
+        state.selectedTaskId = null;
+      }
+      if (payload.board) {
+        state.board = payload.board;
+        render();
+      }
+    })
+    .catch((error) => alert(error.message));
   await loadBoard();
 }
 

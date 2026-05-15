@@ -38,6 +38,7 @@ Deno.test("worker assigns worktree, streams Codex events, and moves task to revi
     assert(updated.worktreePath?.includes(".goalforge/worktrees/TASK-1"));
     assertStringIncludes(updated.validation, "Codex App Server turn completed");
     assertStringIncludes(updated.validation, "Commit:");
+    assertStringIncludes(updated.validation, "Test turn:");
     assert(streamed.some((line) => line.includes("test Codex implementation output")));
   } finally {
     store.close();
@@ -121,6 +122,23 @@ class TestCodexClient implements CodexClient {
       return {
         threadId: session.threadId,
         turnId: "turn-scheduler-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
+    if (_input.title.endsWith(": test-engineer")) {
+      assertStringIncludes(_input.prompt, "Project AGENTS.md context");
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "test engineer validation output",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-test-engineer",
         status: "completed",
         completed: true,
       };

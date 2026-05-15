@@ -212,9 +212,9 @@ export function startServer(
         const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
         if (deleteMatch && request.method === "DELETE") {
           const taskId = decodeURIComponent(deleteMatch[1]);
-          store.deleteTask(taskId);
-          broadcastBoard();
-          return json({ ok: true, taskId });
+          const event = store.deleteTask(taskId);
+          broadcastActivity(event);
+          return json({ ok: true, taskId, board: store.getBoard() });
         }
 
         const transitionMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/transition$/);
@@ -270,7 +270,7 @@ export function startServer(
             return json({ error: `${task.id} must be in Review before review.` }, 400);
           }
           queueMicrotask(() => {
-            const reviewer = new GoalReviewer({
+            const reviewer = new GoalReviewer(normalizedRoot, {
               createCodexClient: options.createCodexClient,
               onEvent: (event) => {
                 const activity = store.appendEvent(

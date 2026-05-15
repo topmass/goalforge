@@ -37,6 +37,10 @@ try {
     case "review":
       await reviewCommand(args);
       break;
+    case "delete":
+    case "remove":
+      deleteCommand(args);
+      break;
     case undefined:
     case "-h":
     case "--help":
@@ -199,7 +203,7 @@ async function reviewCommand(args: string[]): Promise<void> {
     if (task.status !== "review") {
       throw new Error(`${task.id} must be in Review before review.`);
     }
-    const reviewer = new GoalReviewer({
+    const reviewer = new GoalReviewer(root, {
       onEvent: (event) => {
         if (event.message.trim()) {
           console.log(`[reviewer] ${event.kind} ${event.message}`);
@@ -219,6 +223,18 @@ async function reviewCommand(args: string[]): Promise<void> {
   } finally {
     store.close();
   }
+}
+
+function deleteCommand(args: string[]): void {
+  const taskId = args[0];
+  if (!taskId) {
+    throw new Error("Task id is required.");
+  }
+
+  usingStore((store) => {
+    const event = store.deleteTask(taskId);
+    console.log(event.message);
+  });
 }
 
 function statusCommand(): void {
@@ -249,6 +265,7 @@ Usage:
   goalforge run [TASK-ID]
   goalforge run --all [--limit N]
   goalforge review TASK-ID
+  goalforge delete TASK-ID
   goalforge serve [--port 4733]
   goalforge board [--port 4733]
   goalforge merge TASK-ID

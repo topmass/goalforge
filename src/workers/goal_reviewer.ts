@@ -1,5 +1,6 @@
 import { ActivityEvent, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { collectAgentsInstructions } from "./project_context.ts";
 
 export interface GoalReviewerOptions {
   onEvent?: (event: Omit<ActivityEvent, "id" | "createdAt">) => void;
@@ -18,7 +19,7 @@ export class GoalReviewer {
     onEvent: (event: Omit<ActivityEvent, "id" | "createdAt">) => void,
   ) => CodexClient;
 
-  constructor(private readonly options: GoalReviewerOptions = {}) {
+  constructor(private readonly root: string, private readonly options: GoalReviewerOptions = {}) {
     this.createCodexClient = options.createCodexClient ??
       ((onEvent) => new CodexAppServerClient(onEvent));
   }
@@ -28,6 +29,7 @@ export class GoalReviewer {
       throw new Error(`${task.id} does not have an assigned worktree.`);
     }
     let responseText = "";
+    const projectInstructions = await collectAgentsInstructions(this.root);
     const codex = this.createCodexClient((event) => {
       if (event.role === "codex" && event.kind === "agent") {
         responseText += event.message;
@@ -45,7 +47,7 @@ export class GoalReviewer {
       const session = await codex.startSession(task.worktreePath);
       await codex.runTurn(session, {
         title: `${task.id}: review`,
-        prompt: buildReviewPrompt(task),
+        prompt: buildReviewPrompt(task, projectInstructions),
       });
       return parseReviewResponse(responseText);
     } finally {
@@ -63,10 +65,13 @@ export function parseReviewResponse(responseText: string): ReviewResult {
   return { verdict, notes };
 }
 
-function buildReviewPrompt(task: Task): string {
+function buildReviewPrompt(task: Task, projectInstructions: string): string {
   return `You are the GoalForge reviewer for one local coding task.
 
 Review the implementation in this assigned worktree. Do not modify files.
+
+Project AGENTS.md context from the original folder:
+${projectInstructions}
 
 Task:
 - ID: ${task.id}

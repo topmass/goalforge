@@ -17,6 +17,7 @@ export async function prepareTaskWorktree(root: string, task: Task): Promise<Wor
 
   try {
     await Deno.stat(path.join(worktreePath, ".git"));
+    await ensureWorktreeExcludes(worktreePath);
     return { branchName, worktreePath };
   } catch {
     await runCommand(root, [
@@ -29,6 +30,7 @@ export async function prepareTaskWorktree(root: string, task: Task): Promise<Wor
       worktreePath,
       "HEAD",
     ]);
+    await ensureWorktreeExcludes(worktreePath);
     return { branchName, worktreePath };
   }
 }
@@ -51,6 +53,7 @@ export async function gitCommitAll(cwd: string, message: string): Promise<string
     return null;
   }
 
+  await ensureWorktreeExcludes(cwd);
   await runCommand(cwd, ["git", "add", "-A"]);
   await runCommand(cwd, [
     "git",
@@ -63,6 +66,20 @@ export async function gitCommitAll(cwd: string, message: string): Promise<string
     message,
   ]);
   return (await runCommand(cwd, ["git", "rev-parse", "--short", "HEAD"])).trim();
+}
+
+export async function ensureWorktreeExcludes(cwd: string): Promise<void> {
+  const excludePath = (await runCommand(cwd, ["git", "rev-parse", "--git-path", "info/exclude"]))
+    .trim();
+  const current = await Deno.readTextFile(excludePath).catch(() => "");
+  const additions = [".omx/", ".goalforge/"].filter((entry) =>
+    !current.split(/\r?\n/).includes(entry)
+  );
+  if (!additions.length) {
+    return;
+  }
+  const prefix = current && !current.endsWith("\n") ? "\n" : "";
+  await Deno.writeTextFile(excludePath, `${current}${prefix}${additions.join("\n")}\n`);
 }
 
 export async function gitMergeBranch(root: string, branchName: string): Promise<string> {

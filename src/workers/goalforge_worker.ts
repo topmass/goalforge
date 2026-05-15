@@ -3,6 +3,8 @@ import { ActivityEvent, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
 import { GoalScheduler } from "./goal_scheduler.ts";
+import { GoalTestEngineer } from "./goal_test_engineer.ts";
+import { collectAgentsInstructions } from "./project_context.ts";
 import { PROMPTS } from "../board/prompts.ts";
 
 export interface GoalForgeWorkerOptions {
@@ -102,6 +104,7 @@ export class GoalForgeWorker {
 
     try {
       const assignment = await prepareTaskWorktree(this.root, task);
+      const projectInstructions = await collectAgentsInstructions(this.root);
       task = this.store.assignWorktree(task.id, assignment.branchName, assignment.worktreePath);
       this.emit(
         this.store.appendEvent(
@@ -137,8 +140,22 @@ export class GoalForgeWorker {
 
       const turn = await codex.runTurn(session, {
         title: `${task.id}: ${task.title}`,
-        prompt: buildWorkerPrompt(this.root, task),
+        prompt: buildWorkerPrompt(this.root, task, projectInstructions),
       });
+      const testEngineer = new GoalTestEngineer(projectInstructions, {
+        onEvent: (event) => {
+          this.emit(
+            this.store.appendEvent(
+              task.id,
+              run.id,
+              event.role,
+              event.kind,
+              event.message,
+            ),
+          );
+        },
+      });
+      const testTurn = await testEngineer.run(codex, session, task);
 
       const preCommitStatus = await safeGitStatus(session.cwd);
       const preCommitDiff = await safeGitDiffStat(session.cwd);
@@ -153,6 +170,8 @@ export class GoalForgeWorker {
         `Thread: ${turn.threadId}`,
         `Turn: ${turn.turnId}`,
         `Turn status: ${turn.status}`,
+        `Test turn: ${testTurn.turnId}`,
+        `Test turn status: ${testTurn.status}`,
         `Commit: ${commit ?? "not created"}`,
         "",
         "Pre-commit git status:",
@@ -200,7 +219,7 @@ export class GoalForgeWorker {
   }
 }
 
-function buildWorkerPrompt(root: string, task: Task): string {
+function buildWorkerPrompt(root: string, task: Task, projectInstructions: string): string {
   const instructions = [
     ["constitution.md", PROMPTS["constitution.md"]],
     ["project.md", PROMPTS["project.md"]],
@@ -213,6 +232,9 @@ function buildWorkerPrompt(root: string, task: Task): string {
 
 GoalForge instructions:
 ${instructions}
+
+Project AGENTS.md context from the original folder:
+${projectInstructions}
 
 Task:
 - ID: ${task.id}
@@ -228,6 +250,7 @@ Current workpad:
 ${task.workpad || "No workpad notes yet."}
 
 Rules:
+- Run as close as possible to normal Codex in this folder: respect the project AGENTS.md context above, local repo conventions, and the user's installed Codex environment and skills.
 - Work only in this assigned worktree.
 - Do not inspect or modify ${root}/.goalforge/board.sqlite or any GoalForge runtime state. The GoalForge daemon records board, workpad, status, and validation updates after your turn completes.
 - Make the implementation changes needed for this task.
