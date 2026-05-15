@@ -183,6 +183,7 @@ class TestCodexClient implements CodexClient {
     }
 
     assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    assertStringIncludes(_input.prompt, "Codex-native subagents");
     await Deno.writeTextFile(
       `${session.cwd}/codex-output.txt`,
       "test Codex implementation output\n",

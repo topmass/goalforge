@@ -280,6 +280,7 @@ ${task.workpad || "No workpad notes yet."}
 
 Rules:
 - Run as close as possible to normal Codex in this folder: respect the project AGENTS.md context above, local repo conventions, and the user's installed Codex environment and skills.
+- Use Codex-native subagents or delegation when they materially help with independent investigation, implementation, testing, or review without overlapping work.
 - Work only in this assigned worktree.
 - Do not inspect or modify ${root}/.goalforge/board.sqlite or any GoalForge runtime state. The GoalForge daemon records board, workpad, status, and validation updates after your turn completes.
 - Make the implementation changes needed for this task.
