@@ -144,11 +144,21 @@ export class BoardStore {
 
   deleteTask(taskId: string): void {
     const task = this.getTask(taskId);
-    if (!["inbox", "ready", "blocked"].includes(task.status) || task.branchName) {
-      throw new Error(`${task.id} has already started and cannot be deleted from the board.`);
+    if (task.status === "done") {
+      throw new Error(`${task.id} is Done and cannot be deleted from the board.`);
     }
+    this.db.prepare(
+      "UPDATE runs SET status = 'failed', finished_at = ? WHERE task_id = ? AND status = 'running'",
+    )
+      .run(timestamp(), taskId);
     this.db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
-    this.appendEvent(null, null, "user", "delete", `Deleted ${taskId}.`);
+    this.appendEvent(
+      null,
+      null,
+      "user",
+      "delete",
+      `Deleted ${taskId}. Any branch/worktree created for it was left on disk.`,
+    );
   }
 
   findDispatchableTask(): Task | null {

@@ -131,7 +131,7 @@ function taskCard(task) {
     state.selectedTaskId = task.id;
     render();
   });
-  const canDelete = ["inbox", "ready", "blocked"].includes(task.status) && !task.branchName;
+  const canDelete = task.status !== "done";
   const canStart = ["inbox", "ready", "blocked"].includes(task.status);
   const canReview = task.status === "review";
   const canMerge = task.status === "review" || task.status === "done";

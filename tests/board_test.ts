@@ -118,3 +118,27 @@ Deno.test("queued tasks can be deleted before they start", () => {
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("started stuck tasks can be deleted from the board", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Remove this stuck goal");
+    store.assignWorktree(task.id, "goalforge/task-1", `${root}/.goalforge/worktrees/TASK-1`);
+    store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.createRun(task.id, "worker");
+    store.deleteTask(task.id);
+    assertEquals(store.getBoard().tasks.length, 0);
+    assertThrows(
+      () => {
+        store.getTask(task.id);
+      },
+      Error,
+      "Task not found",
+    );
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
