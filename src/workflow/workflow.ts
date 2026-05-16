@@ -18,6 +18,7 @@ export interface WorkflowRuntime {
   model: string;
   reasoningEffort: ReasoningEffort;
   fastMode: boolean;
+  githubPrReview: boolean;
   worktreesDir: string;
   hooks: Record<WorkflowHookStage, WorkflowHook[]>;
   instructions: string;
@@ -57,6 +58,7 @@ export function parseWorkflow(source: string): WorkflowRuntime {
   const codex = record(data.codex);
   const tracker = record(data.tracker);
   const workspace = record(data.workspace);
+  const github = record(data.github);
   const hooks = record(workspace.hooks);
 
   return {
@@ -69,6 +71,7 @@ export function parseWorkflow(source: string): WorkflowRuntime {
     model: stringValue(codex.model, "gpt-5.5"),
     reasoningEffort: reasoningValue(codex.reasoning_effort, "high"),
     fastMode: booleanValue(codex.fast_mode, true),
+    githubPrReview: booleanValue(github.pr_review, false),
     worktreesDir: stringValue(workspace.worktrees_dir, ".goalforge/worktrees"),
     hooks: normalizeHooks(hooks),
     instructions: body.trim() || defaultInstructions(),
@@ -89,6 +92,8 @@ codex:
   model: gpt-5.5
   reasoning_effort: high
   fast_mode: true
+github:
+  pr_review: false
 workspace:
   worktrees_dir: .goalforge/worktrees
   hooks:
@@ -113,7 +118,7 @@ and merge work.
 - Ready is dispatchable work.
 - Started is work currently owned by a Codex worker.
 - Review means implementation and validation evidence exist.
-- Needs Input means GoalForge cannot continue without user direction or a resolved blocker.
+- Inbox also holds work that needs user direction or a resolved blocker.
 - Done means the reviewer approved the work and GoalForge merged it.
 
 ## Workpad Contract

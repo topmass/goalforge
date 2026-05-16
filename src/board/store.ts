@@ -38,6 +38,7 @@ export interface GoalForgeConfig {
   model: string;
   reasoningEffort: ReasoningEffort;
   fastMode: boolean;
+  githubPrReview: boolean;
 }
 
 const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
@@ -592,6 +593,7 @@ function defaultConfig(): GoalForgeConfig {
     model: "gpt-5.5",
     reasoningEffort: "high",
     fastMode: true,
+    githubPrReview: false,
   };
 }
 
@@ -615,6 +617,9 @@ function normalizeConfig(value: Record<string, unknown>): GoalForgeConfig {
       : defaults.model,
     reasoningEffort: reasoning,
     fastMode: typeof value.fastMode === "boolean" ? value.fastMode : defaults.fastMode,
+    githubPrReview: typeof value.githubPrReview === "boolean"
+      ? value.githubPrReview
+      : defaults.githubPrReview,
   };
 }
 

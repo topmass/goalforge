@@ -15,6 +15,8 @@ codex:
   model: gpt-5.5
   reasoning_effort: xhigh
   fast_mode: false
+github:
+  pr_review: true
 workspace:
   worktrees_dir: .goalforge/worktrees
   hooks:
@@ -34,6 +36,7 @@ Keep the local Kanban as the tracker.
   assertEquals(workflow.retryBackoffMs, 2500);
   assertEquals(workflow.reasoningEffort, "xhigh");
   assertEquals(workflow.fastMode, false);
+  assertEquals(workflow.githubPrReview, true);
   assertEquals(workflow.hooks.before_run[0].command, "printf ready");
   assertEquals(workflow.hooks.after_run[0].command, "printf done");
   assertStringIncludes(workflow.instructions, "Custom Workflow");

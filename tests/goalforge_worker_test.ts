@@ -1,11 +1,13 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { BoardStore } from "../src/board/store.ts";
+import { BoardStore, updateConfig } from "../src/board/store.ts";
+import type { Task } from "../src/board/types.ts";
 import {
   CodexClient,
   CodexSession,
   CodexTurnInput,
   CodexTurnResult,
 } from "../src/workers/codex_app_server.ts";
+import { PullRequestGate, PullRequestInfo } from "../src/workers/github_pr.ts";
 import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
 
 Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", async () => {
@@ -172,6 +174,31 @@ workspace:
     const updated = await worker.runTask(task.id);
     assertEquals(updated.status, "done");
     assert(streamed.some((line) => line.includes("Retrying TASK-1 after failure")));
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("worker can gate approved review through a GitHub PR", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const pullRequestGate = new TestPullRequestGate();
+  try {
+    store.initProject();
+    updateConfig(root, { githubPrReview: true });
+    const { task } = store.createGoal("Exercise PR gate");
+    const worker = new GoalForgeWorker(root, store, {
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+      pullRequestGate,
+    });
+    const updated = await worker.runTask(task.id);
+    assertEquals(updated.status, "done");
+    assertEquals(pullRequestGate.opened.length, 1);
+    assertEquals(pullRequestGate.merged.length, 1);
+    assertStringIncludes(updated.validation, "GitHub PR: https://github.test/pr/1");
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -369,6 +396,21 @@ class CommitFailingCodexClient extends TestCodexClient {
       await Deno.writeTextFile(lockPath.trim(), "locked\n");
     }
     return result;
+  }
+}
+
+class TestPullRequestGate implements PullRequestGate {
+  opened: string[] = [];
+  merged: string[] = [];
+
+  open(task: Task, _body: string): Promise<PullRequestInfo> {
+    this.opened.push(task.id);
+    return Promise.resolve({ url: "https://github.test/pr/1" });
+  }
+
+  merge(task: Task, pullRequest: PullRequestInfo): Promise<string> {
+    this.merged.push(task.id);
+    return Promise.resolve(`Merged ${pullRequest.url}`);
   }
 }
 

@@ -44,10 +44,12 @@ Deno.test("config stores model, reasoning, and fast mode", () => {
       model: "gpt-5.4",
       reasoningEffort: "medium",
       fastMode: false,
+      githubPrReview: true,
     });
     assertEquals(config.model, "gpt-5.4");
     assertEquals(config.reasoningEffort, "medium");
     assertEquals(config.fastMode, false);
+    assertEquals(config.githubPrReview, true);
     assertEquals(readConfig(root).reasoningEffort, "medium");
   } finally {
     store.close();

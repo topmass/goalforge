@@ -88,6 +88,7 @@ function workflowCommand(): void {
   console.log(`Max retries: ${workflow.maxRetries}`);
   console.log(`Retry backoff: ${workflow.retryBackoffMs}ms`);
   console.log(`Codex: ${workflow.model} ${workflow.reasoningEffort} fast=${workflow.fastMode}`);
+  console.log(`GitHub PR review: ${workflow.githubPrReview ? "on" : "off"}`);
 }
 
 async function goalCommand(args: string[]): Promise<void> {
@@ -255,7 +256,7 @@ async function reviewCommand(args: string[]): Promise<void> {
         "reviewer",
         "Review requested changes. Add a message to continue this task.",
       );
-      console.log(`${task.id} review requested changes. Moved to Needs Input.`);
+      console.log(`${task.id} review requested changes. Moved to Inbox.`);
       return;
     }
     if (!task.branchName) {
@@ -265,7 +266,7 @@ async function reviewCommand(args: string[]): Promise<void> {
         "merger",
         "GoalForge cannot merge because this task has no assigned branch.",
       );
-      console.log(`${task.id} has no branch to merge. Moved to Needs Input.`);
+      console.log(`${task.id} has no branch to merge. Moved to Inbox.`);
       return;
     }
     const output = await gitMergeBranch(root, task.branchName);

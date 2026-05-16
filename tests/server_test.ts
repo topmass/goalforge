@@ -23,18 +23,30 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     const configResponse = await fetch(`${server.url}/api/config`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.4", reasoningEffort: "medium", fastMode: false }),
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        reasoningEffort: "medium",
+        fastMode: false,
+        githubPrReview: true,
+      }),
     });
     assertEquals(configResponse.ok, true);
     const config = await configResponse.json();
     assertEquals(config.model, "gpt-5.4");
     assertEquals(config.reasoningEffort, "medium");
     assertEquals(config.fastMode, false);
+    assertEquals(config.githubPrReview, true);
 
     const runtime = await fetch(`${server.url}/api/runtime`).then((response) => response.json());
     assertEquals(runtime.queueRunning, false);
     assertEquals(runtime.workflow.trackerKind, "goalforge-local");
     assertEquals(runtime.runningRuns.length, 0);
+
+    await fetch(`${server.url}/api/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ githubPrReview: false }),
+    });
 
     const create = await fetch(`${server.url}/api/goals`, {
       method: "POST",

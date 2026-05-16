@@ -16,6 +16,7 @@ const taskModalContentEl = document.querySelector("#taskModalContent");
 const modelSelectEl = document.querySelector("#modelSelect");
 const reasoningSelectEl = document.querySelector("#reasoningSelect");
 const fastModeEl = document.querySelector("#fastMode");
+const githubPrReviewEl = document.querySelector("#githubPrReview");
 const settingsStatusEl = document.querySelector("#settingsStatus");
 const runtimeStatusEl = document.querySelector("#runtimeStatus");
 
@@ -35,6 +36,7 @@ document.addEventListener("keydown", (event) => {
 modelSelectEl.addEventListener("change", saveConfig);
 reasoningSelectEl.addEventListener("change", saveConfig);
 fastModeEl.addEventListener("change", saveConfig);
+githubPrReviewEl.addEventListener("change", saveConfig);
 
 connectEvents();
 loadConfig();
@@ -68,6 +70,7 @@ async function saveConfig() {
       model: modelSelectEl.value,
       reasoningEffort: reasoningSelectEl.value,
       fastMode: fastModeEl.checked,
+      githubPrReview: githubPrReviewEl.checked,
     }),
   }).then((response) => response.json());
   renderConfig();
@@ -78,17 +81,18 @@ function renderConfig() {
   modelSelectEl.value = state.config.model;
   reasoningSelectEl.value = state.config.reasoningEffort;
   fastModeEl.checked = Boolean(state.config.fastMode);
+  githubPrReviewEl.checked = Boolean(state.config.githubPrReview);
   settingsStatusEl.textContent =
     `${state.config.model} / ${state.config.reasoningEffort.toUpperCase()} / ${
       state.config.fastMode ? "FAST" : "STANDARD"
-    }`;
+    } / ${state.config.githubPrReview ? "PR GATE" : "LOCAL MERGE"}`;
 }
 
 function renderRuntime() {
   if (!state.runtime) return;
   runtimeStatusEl.textContent = `${
     state.runtime.queueRunning ? "QUEUE RUNNING" : "QUEUE IDLE"
-  } / ${state.runtime.workflow.maxConcurrentAgents} AGENTS / ${state.runtime.needsInputTasks.length} NEED INPUT`;
+  } / ${state.runtime.workflow.maxConcurrentAgents} AGENTS / ${state.runtime.needsInputTasks.length} INBOX`;
 }
 
 function connectEvents() {
@@ -142,7 +146,7 @@ function render() {
 
 function renderBoard() {
   boardEl.innerHTML = "";
-  for (const status of state.board.statuses) {
+  for (const status of displayStatuses()) {
     const column = document.createElement("section");
     column.className = "column";
     column.dataset.status = status.id;
@@ -163,7 +167,7 @@ function renderBoard() {
           return;
         }
         await postJson(`/api/tasks/${encodeURIComponent(taskId)}/transition`, {
-          status: status.id,
+          status: status.targetStatus,
           actor: "user",
           reason: "Dragged in GoalForge board.",
         }).catch((error) => alert(error.message));
@@ -171,7 +175,7 @@ function renderBoard() {
       }
     });
 
-    const tasks = state.board.tasks.filter((task) => task.status === status.id);
+    const tasks = state.board.tasks.filter((task) => status.taskStatuses.includes(task.status));
     column.innerHTML = `
       <div class="column-head">
         <span>${escapeHtml(status.label).toUpperCase()}</span>
@@ -185,6 +189,16 @@ function renderBoard() {
     }
     boardEl.appendChild(column);
   }
+}
+
+function displayStatuses() {
+  return state.board.statuses
+    .filter((status) => status.id !== "blocked")
+    .map((status) =>
+      status.id === "inbox"
+        ? { ...status, taskStatuses: ["inbox", "blocked"], targetStatus: "blocked" }
+        : { ...status, taskStatuses: [status.id], targetStatus: status.id }
+    );
 }
 
 function taskCard(task) {

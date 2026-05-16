@@ -147,6 +147,9 @@ export function startServer(
               ? body.reasoningEffort as ReasoningEffort
               : undefined,
             fastMode: typeof body.fastMode === "boolean" ? body.fastMode : undefined,
+            githubPrReview: typeof body.githubPrReview === "boolean"
+              ? body.githubPrReview
+              : undefined,
           });
           broadcastActivity(
             store.appendEvent(
@@ -156,7 +159,7 @@ export function startServer(
               "config",
               `Model ${config.model}, reasoning ${config.reasoningEffort}, fast ${
                 config.fastMode ? "on" : "off"
-              }.`,
+              }, GitHub PR gate ${config.githubPrReview ? "on" : "off"}.`,
             ),
           );
           return json(config);
@@ -390,7 +393,7 @@ export function startServer(
                   ).event,
                 );
               } catch {
-                // Preserve the original review failure if the task cannot move to Needs Input.
+                // Preserve the original review failure if the task cannot move to Inbox.
               }
               broadcast("error", { message });
             });

@@ -12,6 +12,7 @@ import {
 import { GoalReviewer } from "./goal_reviewer.ts";
 import { GoalScheduler } from "./goal_scheduler.ts";
 import { GoalTestEngineer } from "./goal_test_engineer.ts";
+import { GhPullRequestGate, PullRequestGate, PullRequestInfo } from "./github_pr.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { runWorkflowHooks } from "./workflow_hooks.ts";
@@ -23,6 +24,7 @@ export interface GoalForgeWorkerOptions {
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  pullRequestGate?: PullRequestGate;
 }
 
 export class GoalForgeWorker {
@@ -32,6 +34,7 @@ export class GoalForgeWorker {
   readonly createCodexClient: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  readonly pullRequestGate: PullRequestGate;
   private mergeChain: Promise<void> = Promise.resolve();
 
   constructor(root: string, store: BoardStore, options: GoalForgeWorkerOptions = {}) {
@@ -40,6 +43,7 @@ export class GoalForgeWorker {
     this.onEvent = options.onEvent;
     this.createCodexClient = options.createCodexClient ??
       ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
+    this.pullRequestGate = options.pullRequestGate ?? new GhPullRequestGate(this.root);
   }
 
   async runNext(): Promise<Task> {
@@ -329,6 +333,9 @@ export class GoalForgeWorker {
   }
 
   private async reviewAndMerge(task: Task, runId: string): Promise<Task> {
+    const config = readConfig(this.root);
+    const workflow = readWorkflow(this.root);
+    const usePullRequestGate = config.githubPrReview || workflow.githubPrReview;
     this.emit(
       this.store.appendEvent(
         task.id,
@@ -355,6 +362,29 @@ export class GoalForgeWorker {
         }
       },
     });
+    let pullRequest: PullRequestInfo | null = null;
+    if (usePullRequestGate) {
+      const latest = this.store.getTask(task.id);
+      pullRequest = await this.pullRequestGate.open(
+        latest,
+        buildPullRequestBody(latest.validation, latest.workpad),
+      );
+      const validation = [
+        latest.validation,
+        "",
+        `GitHub PR: ${pullRequest.url}`,
+      ].filter(Boolean).join("\n");
+      this.store.updateTaskValidation(task.id, validation);
+      this.emit(
+        this.store.appendEvent(
+          task.id,
+          runId,
+          "github",
+          "pr",
+          `Opened review PR ${pullRequest.url}.`,
+        ),
+      );
+    }
     const result = await reviewer.review(task);
     const latest = this.store.getTask(task.id);
     const reviewText = [
@@ -400,13 +430,15 @@ export class GoalForgeWorker {
       return this.store.getTask(task.id);
     }
 
-    const output = await this.mergeBranch(task.branchName);
+    const output = pullRequest
+      ? await this.pullRequestGate.merge(task, pullRequest)
+      : await this.mergeBranch(task.branchName);
     this.emit(
       this.store.appendEvent(
         task.id,
         runId,
-        "merger",
-        "merge",
+        pullRequest ? "github" : "merger",
+        pullRequest ? "pr" : "merge",
         output.trim() || `Merged ${task.branchName}.`,
       ),
     );
@@ -446,6 +478,18 @@ export class GoalForgeWorker {
       this.emit(this.store.appendEvent(taskId, runId, "workflow", stage, message));
     }
   }
+}
+
+function buildPullRequestBody(validation: string, workpad: string): string {
+  return [
+    "Created by GoalForge during automatic review.",
+    "",
+    "## Validation",
+    validation || "No validation evidence recorded.",
+    "",
+    "## Workpad",
+    workpad || "No workpad notes recorded.",
+  ].join("\n");
 }
 
 function buildWorkerPrompt(
