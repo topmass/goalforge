@@ -311,10 +311,71 @@ export function startServer(
               ].filter(Boolean).join("\n");
               store.updateTaskValidation(task.id, reviewText);
               broadcastActivity(
-                store.appendEvent(task.id, null, "reviewer", "review", result.verdict),
+                store.appendEvent(
+                  task.id,
+                  null,
+                  "reviewer",
+                  "review",
+                  result.verdict === "approved"
+                    ? "Review approved. Merging branch."
+                    : "Review requested changes. Waiting for user direction.",
+                ),
               );
+              if (result.verdict !== "approved") {
+                broadcastActivity(
+                  store.requestTransition(
+                    task.id,
+                    "blocked",
+                    "reviewer",
+                    "Review requested changes. Add a message to continue this task.",
+                  ).event,
+                );
+                return;
+              }
+              if (!task.branchName) {
+                broadcastActivity(
+                  store.requestTransition(
+                    task.id,
+                    "blocked",
+                    "merger",
+                    "GoalForge cannot merge because this task has no assigned branch.",
+                  ).event,
+                );
+                return;
+              }
+              return gitMergeBranch(normalizedRoot, task.branchName).then((output) => {
+                broadcastActivity(
+                  store.appendEvent(
+                    task.id,
+                    null,
+                    "merger",
+                    "merge",
+                    output.trim() || `Merged ${task.branchName}.`,
+                  ),
+                );
+                broadcastActivity(
+                  store.requestTransition(
+                    task.id,
+                    "done",
+                    "merger",
+                    `Review approved and merged ${task.branchName}.`,
+                  ).event,
+                );
+              });
             }).catch((error) => {
               const message = error instanceof Error ? error.message : String(error);
+              try {
+                broadcastActivity(
+                  store.requestTransition(
+                    taskId,
+                    "blocked",
+                    "reviewer",
+                    `GoalForge needs input: ${message}`,
+                  ).event,
+                );
+              } catch {
+                // Preserve the original review failure if the task cannot move to Needs Input.
+              }
               broadcast("error", { message });
             });
           });

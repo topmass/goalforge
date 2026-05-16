@@ -14,7 +14,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   ready: "Ready",
   in_progress: "Started",
   review: "Review",
-  blocked: "Waiting",
+  blocked: "Needs Input",
   done: "Done",
 };
 

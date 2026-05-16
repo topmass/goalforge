@@ -429,7 +429,11 @@ function summarizeNotification(method: string, params: JsonObject | undefined): 
   if (method === "thread/tokenUsage/updated" && params) {
     return "Token usage updated.";
   }
-  if (method === "mcpServer/startupStatus/updated") {
+  if (
+    method === "mcpServer/startupStatus/updated" ||
+    method === "serverRequest/resolved" ||
+    method === "account/rateLimits/updated"
+  ) {
     return "";
   }
   return `Codex event: ${method}`;

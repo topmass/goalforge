@@ -1,7 +1,15 @@
 import { BoardStore, readConfig } from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, QueuedMessage, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
-import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
+import { shouldRecordActivity } from "./activity_filter.ts";
+import {
+  gitCommitAll,
+  gitDiffStat,
+  gitMergeBranch,
+  gitStatus,
+  prepareTaskWorktree,
+} from "./git_utils.ts";
+import { GoalReviewer } from "./goal_reviewer.ts";
 import { GoalScheduler } from "./goal_scheduler.ts";
 import { GoalTestEngineer } from "./goal_test_engineer.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
@@ -22,6 +30,7 @@ export class GoalForgeWorker {
   readonly createCodexClient: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  private mergeChain: Promise<void> = Promise.resolve();
 
   constructor(root: string, store: BoardStore, options: GoalForgeWorkerOptions = {}) {
     this.root = root;
@@ -50,7 +59,9 @@ export class GoalForgeWorker {
         projectMemory: buildProjectMemory(this.store),
         createCodexClient: this.createCodexClient,
         onEvent: (event) => {
-          this.emit(this.store.appendAgentEvent(event));
+          if (shouldRecordActivity(event)) {
+            this.emit(this.store.appendAgentEvent(event));
+          }
         },
       });
       const remaining = limit === Number.POSITIVE_INFINITY
@@ -93,16 +104,18 @@ export class GoalForgeWorker {
     );
 
     const codex = this.createCodexClient((event) => {
-      this.emit(
-        this.store.appendEvent(
-          task.id,
-          run.id,
-          event.role,
-          event.kind,
-          event.message,
-          event.raw,
-        ),
-      );
+      if (shouldRecordActivity(event)) {
+        this.emit(
+          this.store.appendEvent(
+            task.id,
+            run.id,
+            event.role,
+            event.kind,
+            event.message,
+            event.raw,
+          ),
+        );
+      }
     });
 
     try {
@@ -206,22 +219,43 @@ export class GoalForgeWorker {
 
       this.store.updateTaskWorkpad(task.id, buildWorkpad(task, session.threadId, turn.turnId));
       this.store.updateTaskValidation(task.id, validation);
-      this.emit(
-        this.store.requestTransition(
-          task.id,
-          "review",
-          "worker",
-          "Codex turn completed and validation evidence was recorded.",
-        ).event,
+      if (isCommitFailure(commit)) {
+        this.emit(
+          this.store.requestTransition(
+            task.id,
+            "blocked",
+            "worker",
+            "GoalForge could not create a commit. Check validation for git status and nested repository details.",
+          ).event,
+        );
+        this.store.finishRun(run.id, "failed");
+        return this.store.getTask(task.id);
+      }
+      const reviewTransition = this.store.requestTransition(
+        task.id,
+        "review",
+        "worker",
+        "Codex turn completed and validation evidence was recorded.",
       );
+      this.emit(
+        reviewTransition.event,
+      );
+      const result = await this.reviewAndMerge(reviewTransition.task, run.id);
       this.store.finishRun(run.id, "completed");
-      return this.store.getTask(task.id);
+      return result;
     } catch (error) {
       this.store.finishRun(run.id, "failed");
       const message = error instanceof Error ? error.message : String(error);
       this.emit(this.store.appendEvent(task.id, run.id, "worker", "error", message));
       try {
-        this.emit(this.store.requestTransition(task.id, "blocked", "worker", message).event);
+        this.emit(
+          this.store.requestTransition(
+            task.id,
+            "blocked",
+            "worker",
+            `GoalForge needs input: ${message}`,
+          ).event,
+        );
       } catch {
         // Keep the original worker error if the task cannot move to Blocked from its current state.
       }
@@ -233,6 +267,113 @@ export class GoalForgeWorker {
 
   private emit(event: ActivityEvent): void {
     this.onEvent?.(event);
+  }
+
+  private async reviewAndMerge(task: Task, runId: string): Promise<Task> {
+    this.emit(
+      this.store.appendEvent(
+        task.id,
+        runId,
+        "reviewer",
+        "phase",
+        "Automatic review started.",
+      ),
+    );
+    const reviewer = new GoalReviewer(this.root, {
+      createCodexClient: this.createCodexClient,
+      onEvent: (event) => {
+        if (shouldRecordActivity(event)) {
+          this.emit(
+            this.store.appendEvent(
+              task.id,
+              runId,
+              event.role,
+              event.kind,
+              event.message,
+              event.raw,
+            ),
+          );
+        }
+      },
+    });
+    const result = await reviewer.review(task);
+    const latest = this.store.getTask(task.id);
+    const reviewText = [
+      latest.validation,
+      "",
+      `GoalForge review: ${result.verdict.toUpperCase()}`,
+      result.notes,
+    ].filter(Boolean).join("\n");
+    this.store.updateTaskValidation(task.id, reviewText);
+    this.emit(
+      this.store.appendEvent(
+        task.id,
+        runId,
+        "reviewer",
+        "review",
+        result.verdict === "approved"
+          ? "Review approved. Merging branch."
+          : "Review requested changes. Waiting for user direction.",
+      ),
+    );
+
+    if (result.verdict !== "approved") {
+      this.emit(
+        this.store.requestTransition(
+          task.id,
+          "blocked",
+          "reviewer",
+          "Automatic review requested changes. Add a message to continue this task.",
+        ).event,
+      );
+      return this.store.getTask(task.id);
+    }
+
+    if (!task.branchName) {
+      this.emit(
+        this.store.requestTransition(
+          task.id,
+          "blocked",
+          "merger",
+          "GoalForge cannot merge because this task has no assigned branch.",
+        ).event,
+      );
+      return this.store.getTask(task.id);
+    }
+
+    const output = await this.mergeBranch(task.branchName);
+    this.emit(
+      this.store.appendEvent(
+        task.id,
+        runId,
+        "merger",
+        "merge",
+        output.trim() || `Merged ${task.branchName}.`,
+      ),
+    );
+    this.emit(
+      this.store.requestTransition(
+        task.id,
+        "done",
+        "merger",
+        `Review approved and merged ${task.branchName}.`,
+      ).event,
+    );
+    return this.store.getTask(task.id);
+  }
+
+  private async mergeBranch(branchName: string): Promise<string> {
+    const previous = this.mergeChain;
+    let release = () => {};
+    this.mergeChain = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await gitMergeBranch(this.root, branchName);
+    } finally {
+      release();
+    }
   }
 }
 
@@ -333,4 +474,8 @@ async function safeGitCommit(cwd: string, message: string): Promise<string | nul
   } catch (error) {
     return `commit failed: ${error instanceof Error ? error.message : String(error)}`;
   }
+}
+
+function isCommitFailure(commit: string | null): boolean {
+  return commit?.startsWith("commit failed:") ?? false;
 }

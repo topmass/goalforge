@@ -8,7 +8,7 @@ import {
 } from "../src/workers/codex_app_server.ts";
 import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
 
-Deno.test("worker assigns worktree, streams Codex events, and moves task to review", async () => {
+Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", async () => {
   const root = Deno.makeTempDirSync();
   await git(root, ["init", "-b", "main"]);
   await Deno.writeTextFile(`${root}/seed.txt`, "seed\n");
@@ -33,21 +33,27 @@ Deno.test("worker assigns worktree, streams Codex events, and moves task to revi
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
     const updated = await worker.runTask(task.id);
-    assertEquals(updated.status, "review");
+    assertEquals(updated.status, "done");
     assert(updated.branchName?.startsWith("goalforge/task-1"));
     assert(updated.worktreePath?.includes(".goalforge/worktrees/TASK-1"));
     assertEquals(updated.threadId, "thread-test");
     assertStringIncludes(updated.validation, "Codex App Server turn completed");
     assertStringIncludes(updated.validation, "Commit:");
     assertStringIncludes(updated.validation, "Test turn:");
+    assertStringIncludes(updated.validation, "GoalForge review: APPROVED");
     assert(streamed.some((line) => line.includes("test Codex implementation output")));
+    assert(streamed.some((line) => line.includes("Review approved. Merging branch.")));
+    assertEquals(
+      await Deno.readTextFile(`${root}/task-1-codex-output.txt`),
+      "test Codex implementation output\n",
+    );
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("worker resumes an existing task thread for continuation turns", async () => {
+Deno.test("worker resumes blocked task thread for continuation turns", async () => {
   const root = Deno.makeTempDirSync();
   await seedGitRepo(root);
 
@@ -58,11 +64,11 @@ Deno.test("worker resumes an existing task thread for continuation turns", async
     store.initProject();
     const { task } = store.createGoal("Continue reviewed work");
     const worker = new GoalForgeWorker(root, store, {
-      createCodexClient: (onEvent) => new TestCodexClient(onEvent, resumed, prompts),
+      createCodexClient: (onEvent) => new ChangesRequestedCodexClient(onEvent, resumed, prompts),
     });
     await worker.runTask(task.id);
     const first = store.getTask(task.id);
-    assertEquals(first.status, "review");
+    assertEquals(first.status, "blocked");
     store.enqueueMessage(task.id, "user", "Please refine the result.");
     await worker.runTask(task.id);
     assertEquals(resumed, ["thread-test"]);
@@ -88,8 +94,32 @@ Deno.test("worker queue processes dispatchable tasks one at a time", async () =>
     });
     const completed = await worker.runQueue();
     assertEquals(completed.length, 2);
-    assertEquals(store.getTask("TASK-1").status, "review");
-    assertEquals(store.getTask("TASK-2").status, "review");
+    assertEquals(store.getTask("TASK-1").status, "done");
+    assertEquals(store.getTask("TASK-2").status, "done");
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("worker blocks task when GoalForge cannot create commit", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Exercise failed commit handling");
+    const worker = new GoalForgeWorker(root, store, {
+      createCodexClient: (onEvent) => new CommitFailingCodexClient(onEvent),
+    });
+    const updated = await worker.runTask(task.id);
+    assertEquals(updated.status, "blocked");
+    assertStringIncludes(updated.validation, "Commit: commit failed:");
+    assertStringIncludes(
+      updated.blockedReason ?? "",
+      "GoalForge could not create a commit",
+    );
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -113,7 +143,7 @@ async function seedGitRepo(root: string): Promise<void> {
 
 class TestCodexClient implements CodexClient {
   constructor(
-    private readonly onEvent: (
+    protected readonly onEvent: (
       event: {
         taskId: string | null;
         runId: string | null;
@@ -123,7 +153,7 @@ class TestCodexClient implements CodexClient {
       },
     ) => void,
     private readonly resumed: string[] = [],
-    private readonly prompts: string[] = [],
+    protected readonly prompts: string[] = [],
   ) {}
 
   startSession(cwd: string): Promise<CodexSession> {
@@ -182,10 +212,28 @@ class TestCodexClient implements CodexClient {
       };
     }
 
+    if (_input.title.endsWith(": review")) {
+      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "APPROVED\n- Validation covers the task.",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-review-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     assertStringIncludes(_input.prompt, "Current GoalForge board memory");
     assertStringIncludes(_input.prompt, "Codex-native subagents");
+    const taskId = _input.title.split(":")[0].toLowerCase();
     await Deno.writeTextFile(
-      `${session.cwd}/codex-output.txt`,
+      `${session.cwd}/${taskId}-codex-output.txt`,
       "test Codex implementation output\n",
     );
     this.onEvent({
@@ -208,7 +256,50 @@ class TestCodexClient implements CodexClient {
   }
 }
 
+class ChangesRequestedCodexClient extends TestCodexClient {
+  override async runTurn(
+    session: CodexSession,
+    input: CodexTurnInput,
+  ): Promise<CodexTurnResult> {
+    if (input.title.endsWith(": review")) {
+      this.prompts.push(input.prompt);
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "CHANGES_REQUESTED\n- More work is needed.",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-review-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+    return await super.runTurn(session, input);
+  }
+}
+
+class CommitFailingCodexClient extends TestCodexClient {
+  override async runTurn(
+    session: CodexSession,
+    input: CodexTurnInput,
+  ): Promise<CodexTurnResult> {
+    const result = await super.runTurn(session, input);
+    if (!input.title.endsWith(": test-engineer")) {
+      const lockPath = await gitOutput(session.cwd, ["rev-parse", "--git-path", "index.lock"]);
+      await Deno.writeTextFile(lockPath.trim(), "locked\n");
+    }
+    return result;
+  }
+}
+
 async function git(root: string, args: string[]): Promise<void> {
+  await gitOutput(root, args);
+}
+
+async function gitOutput(root: string, args: string[]): Promise<string> {
   const output = await new Deno.Command("git", {
     args,
     cwd: root,
@@ -218,4 +309,5 @@ async function git(root: string, args: string[]): Promise<void> {
   if (!output.success) {
     throw new Error(new TextDecoder().decode(output.stderr));
   }
+  return new TextDecoder().decode(output.stdout);
 }

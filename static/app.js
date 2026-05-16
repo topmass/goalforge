@@ -197,9 +197,14 @@ function taskCard(task) {
       ${canDelete ? `<button class="card-action danger" data-action="delete">DELETE</button>` : ""}
     </div>
     <div class="task-title">${escapeHtml(task.title)}</div>
+    ${
+    task.blockedReason
+      ? `<div class="task-alert">${escapeHtml(shortMessage(task.blockedReason))}</div>`
+      : ""
+  }
     <div class="task-meta">
       <span>P${task.priority}</span>
-      <span>${task.branchName ? "BRANCH" : "QUEUED"}</span>
+      <span>${task.status === "done" ? "MERGED" : task.branchName ? "BRANCH" : "QUEUED"}</span>
     </div>
     <div class="card-actions">
       ${canStart ? `<button class="card-action" data-action="start">START</button>` : ""}
@@ -324,7 +329,7 @@ async function deleteTask(task) {
 
 function renderCommandCenter() {
   const groups = new Map();
-  for (const event of compactEvents(displayEvents(state.board.events).slice(-160))) {
+  for (const event of compactEvents(displayEvents(state.board.events)).slice(-80)) {
     const key = event.runId || event.taskId || "system";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(event);
@@ -353,7 +358,7 @@ function renderCommandCenter() {
       </div>
       <div class="terminal">
         ${
-      events.map((event) => `
+      events.slice(-12).map((event) => `
           <div class="terminal-line">
             <span class="time">${timeOnly(event.createdAt)}</span>
             <span class="kind" title="${escapeHtml(event.kind)}">${
@@ -376,10 +381,13 @@ function renderCommandCenter() {
 function displayEvents(events) {
   return events.filter((event) => {
     if (!event.message?.trim()) return false;
-    if (["agent", "reasoning"].includes(event.kind)) return false;
+    if (["agent", "reasoning", "thread/tokenUsage/updated"].includes(event.kind)) return false;
     if (event.kind === "mcpServer/startupStatus/updated") return false;
+    if (event.kind === "serverRequest/resolved") return false;
+    if (event.kind === "account/rateLimits/updated") return false;
     if (event.message.startsWith("Codex event: mcpServer/")) return false;
     if (event.message === "Token usage updated.") return false;
+    if (event.message === "Codex event: serverRequest/resolved") return false;
     return true;
   });
 }

@@ -1,5 +1,6 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { shouldRecordActivity } from "./activity_filter.ts";
 import { readConfig } from "../board/store.ts";
 
 export interface ScheduleDecision {
@@ -39,14 +40,17 @@ export class GoalScheduler {
       if (event.role === "codex" && event.kind === "agent") {
         responseText += event.message;
       }
-      this.options.onEvent?.({
+      const activity = {
         taskId: null,
         runId: null,
         role: "scheduler",
         kind: event.kind,
         message: event.message,
         raw: event.raw,
-      });
+      };
+      if (shouldRecordActivity(activity)) {
+        this.options.onEvent?.(activity);
+      }
     });
 
     try {

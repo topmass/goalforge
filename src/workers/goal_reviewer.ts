@@ -2,6 +2,7 @@ import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
+import { shouldRecordActivity } from "./activity_filter.ts";
 import { BoardStore, readConfig } from "../board/store.ts";
 
 export interface GoalReviewerOptions {
@@ -43,13 +44,16 @@ export class GoalReviewer {
       if (event.role === "codex" && event.kind === "agent") {
         responseText += event.message;
       }
-      this.options.onEvent?.({
+      const activity = {
         taskId: task.id,
         runId: null,
         role: "reviewer",
         kind: event.kind,
         message: event.message,
-      });
+      };
+      if (shouldRecordActivity(activity)) {
+        this.options.onEvent?.(activity);
+      }
     });
 
     try {

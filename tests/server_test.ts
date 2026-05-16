@@ -47,27 +47,12 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertEquals(runResponse.ok, true);
     await runResponse.json();
 
-    const board = await waitForReview(server.url);
-    assertEquals(board.tasks[0].status, "review");
+    const board = await waitForDone(server.url);
+    assertEquals(board.tasks[0].status, "done");
     assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
     assertStringIncludes(board.tasks[0].validation, "Commit:");
     assertStringIncludes(board.tasks[0].validation, "Test turn:");
-
-    const reviewResponse = await fetch(`${server.url}/api/tasks/TASK-1/review`, {
-      method: "POST",
-    });
-    assertEquals(reviewResponse.ok, true);
-    await reviewResponse.json();
-    const reviewedBoard = await waitForReviewEvidence(server.url);
-    assertStringIncludes(reviewedBoard.tasks[0].validation, "GoalForge review: APPROVED");
-
-    const mergeResponse = await fetch(`${server.url}/api/tasks/TASK-1/merge`, {
-      method: "POST",
-    });
-    assertEquals(mergeResponse.ok, true);
-    await mergeResponse.json();
-    const mergedBoard = await fetch(`${server.url}/api/board`).then((response) => response.json());
-    assertEquals(mergedBoard.tasks[0].status, "done");
+    assertStringIncludes(board.tasks[0].validation, "GoalForge review: APPROVED");
     assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
 
     const planned = await fetch(`${server.url}/api/goals/plan`, {
@@ -266,24 +251,13 @@ async function git(root: string, args: string[]): Promise<void> {
   }
 }
 
-async function waitForReview(url: string): Promise<BoardResponse> {
+async function waitForDone(url: string): Promise<BoardResponse> {
   for (let index = 0; index < 80; index++) {
     const board = await fetch(`${url}/api/board`).then((response) => response.json());
-    if (board.tasks[0]?.status === "review") {
+    if (board.tasks[0]?.status === "done") {
       return board;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("Task did not reach Review.");
-}
-
-async function waitForReviewEvidence(url: string): Promise<BoardResponse> {
-  for (let index = 0; index < 80; index++) {
-    const board = await fetch(`${url}/api/board`).then((response) => response.json());
-    if (board.tasks[0]?.validation.includes("GoalForge review: APPROVED")) {
-      return board;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error("Task did not receive review evidence.");
+  throw new Error("Task did not reach Done.");
 }

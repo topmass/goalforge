@@ -223,7 +223,49 @@ async function reviewCommand(args: string[]): Promise<void> {
       result.notes,
     ].filter(Boolean).join("\n");
     store.updateTaskValidation(task.id, reviewText);
-    store.appendEvent(task.id, null, "reviewer", "review", result.verdict);
+    store.appendEvent(
+      task.id,
+      null,
+      "reviewer",
+      "review",
+      result.verdict === "approved"
+        ? "Review approved. Merging branch."
+        : "Review requested changes. Waiting for user direction.",
+    );
+    if (result.verdict !== "approved") {
+      store.requestTransition(
+        task.id,
+        "blocked",
+        "reviewer",
+        "Review requested changes. Add a message to continue this task.",
+      );
+      console.log(`${task.id} review requested changes. Moved to Needs Input.`);
+      return;
+    }
+    if (!task.branchName) {
+      store.requestTransition(
+        task.id,
+        "blocked",
+        "merger",
+        "GoalForge cannot merge because this task has no assigned branch.",
+      );
+      console.log(`${task.id} has no branch to merge. Moved to Needs Input.`);
+      return;
+    }
+    const output = await gitMergeBranch(root, task.branchName);
+    store.appendEvent(
+      task.id,
+      null,
+      "merger",
+      "merge",
+      output.trim() || `Merged ${task.branchName}.`,
+    );
+    store.requestTransition(
+      task.id,
+      "done",
+      "merger",
+      `Review approved and merged ${task.branchName}.`,
+    );
     console.log(`${task.id} review ${result.verdict}.`);
   } finally {
     store.close();
