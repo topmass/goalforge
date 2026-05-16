@@ -1,72 +1,84 @@
 :root {
   color-scheme: light;
-  --bg: #f6fbfc;
-  --panel: rgba(255, 255, 255, 0.78);
-  --panel-2: rgba(255, 255, 255, 0.9);
-  --ink: #14211f;
-  --muted: #2d514b;
-  --dim: #5b716d;
-  --line: #b5cbc6;
-  --accent: #277960;
+  --bg: #edf5f3;
+  --panel: rgba(255, 255, 255, 0.52);
+  --panel-2: rgba(255, 255, 255, 0.62);
+  --ink: #10201d;
+  --muted: #294842;
+  --dim: #60766f;
+  --line: rgba(77, 111, 105, 0.32);
+  --accent: #176b58;
   --hot: #06100e;
   --warn: #6d5a10;
-  --field: rgba(255, 255, 255, 0.66);
+  --field: rgba(255, 255, 255, 0.58);
   --chrome: linear-gradient(
     132deg,
-    rgba(255, 255, 255, 0.72) 0%,
-    rgba(255, 255, 255, 0.58) 48%,
-    rgba(235, 249, 247, 0.34) 49%,
-    rgba(235, 249, 247, 0.2) 100%
+    rgba(255, 255, 255, 0.64) 0%,
+    rgba(255, 255, 255, 0.5) 49%,
+    rgba(230, 246, 243, 0.24) 50%,
+    rgba(230, 246, 243, 0.1) 100%
   );
   --glass-panel: linear-gradient(
     132deg,
-    rgba(255, 255, 255, 0.66) 0%,
-    rgba(255, 255, 255, 0.5) 48%,
-    rgba(232, 248, 246, 0.3) 49%,
-    rgba(232, 248, 246, 0.16) 100%
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(255, 255, 255, 0.42) 49%,
+    rgba(222, 241, 238, 0.2) 50%,
+    rgba(222, 241, 238, 0.08) 100%
   );
   --glass-card: linear-gradient(
     132deg,
-    rgba(255, 255, 255, 0.76) 0%,
-    rgba(255, 255, 255, 0.62) 48%,
-    rgba(245, 255, 253, 0.4) 49%,
-    rgba(245, 255, 253, 0.24) 100%
+    rgba(255, 255, 255, 0.7) 0%,
+    rgba(255, 255, 255, 0.54) 49%,
+    rgba(246, 255, 252, 0.24) 50%,
+    rgba(246, 255, 252, 0.12) 100%
   );
   --agent-bg: var(--glass-card);
   --glass-reflect: linear-gradient(
     110deg,
-    rgba(255, 255, 255, 0.56) 0%,
-    rgba(255, 255, 255, 0.18) 22%,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.22) 24%,
     rgba(255, 255, 255, 0) 44%,
-    rgba(255, 255, 255, 0.22) 78%,
+    rgba(255, 255, 255, 0.2) 78%,
     rgba(255, 255, 255, 0.04) 100%
   );
-  --glass-filter: blur(18px) saturate(1.35);
+  --glass-filter: blur(24px) saturate(1.5);
   --masthead-bg: linear-gradient(
     132deg,
-    rgba(255, 255, 255, 0.74) 0%,
-    rgba(255, 255, 255, 0.58) 47%,
-    rgba(225, 242, 239, 0.36) 48%,
-    rgba(225, 242, 239, 0.18) 100%
+    rgba(255, 255, 255, 0.68) 0%,
+    rgba(255, 255, 255, 0.52) 47%,
+    rgba(224, 241, 238, 0.28) 48%,
+    rgba(224, 241, 238, 0.12) 100%
   );
-  --masthead-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 18px 48px rgba(82, 117, 111, 0.16);
-  --wordmark-shadow: 0 14px 32px rgba(80, 126, 117, 0.18);
-  --button-bg: #13231f;
+  --masthead-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 18px 48px rgba(52, 77, 72, 0.14);
+  --wordmark-shadow: 0 14px 32px rgba(47, 93, 84, 0.16);
+  --button-bg: rgba(12, 31, 27, 0.94);
   --button-ink: #f8fffc;
-  --grid-line: rgba(45, 81, 75, 0.08);
+  --grid-line: rgba(45, 81, 75, 0.035);
   --page-wash: linear-gradient(
     135deg,
-    rgba(216, 237, 233, 0.9),
-    rgba(255, 255, 255, 0.54) 38%,
-    rgba(236, 244, 255, 0.8)
+    rgba(210, 231, 226, 0.78),
+    rgba(255, 255, 255, 0.38) 32%,
+    rgba(228, 236, 252, 0.62) 66%,
+    rgba(224, 244, 231, 0.68)
   );
   --background-image: linear-gradient(transparent, transparent);
   --modal-backdrop: rgba(236, 246, 244, 0.78);
   --modal-bg: rgba(253, 255, 254, 0.96);
   --modal-shadow: 0 26px 90px rgba(59, 88, 82, 0.24);
-  --card-shadow: 0 10px 28px rgba(43, 76, 70, 0.06);
+  --shell-bg: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.48),
+    rgba(255, 255, 255, 0.2) 48%,
+    rgba(218, 237, 233, 0.16)
+  );
+  --shell-border: rgba(255, 255, 255, 0.66);
+  --shell-shadow: 0 30px 110px rgba(41, 68, 63, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  --card-shadow: 0 14px 34px rgba(43, 76, 70, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --window-radius: 18px;
+  --panel-radius: 12px;
+  --card-radius: 8px;
+  --mac-controls-opacity: 1;
+  --ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
@@ -100,7 +112,15 @@
   --modal-backdrop: rgba(0, 0, 0, 0.72);
   --modal-bg: #07100b;
   --modal-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  --shell-bg: transparent;
+  --shell-border: transparent;
+  --shell-shadow: none;
   --card-shadow: none;
+  --window-radius: 0;
+  --panel-radius: 0;
+  --card-radius: 0;
+  --mac-controls-opacity: 0;
+  --ui: var(--mono);
 }
 
 * {
@@ -113,7 +133,7 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--mono);
+  font-family: var(--ui);
   letter-spacing: 0;
 }
 
@@ -132,7 +152,7 @@ body {
 button,
 input,
 select {
-  border-radius: 0;
+  border-radius: var(--card-radius);
   font: inherit;
 }
 
@@ -146,8 +166,12 @@ button {
 }
 
 button:hover {
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.58);
   color: var(--ink);
+}
+
+:root[data-theme="dark"] button:hover {
+  background: var(--bg);
 }
 
 input {
@@ -157,6 +181,7 @@ input {
   background: var(--field);
   color: var(--ink);
   padding: 0 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
 select {
@@ -165,6 +190,7 @@ select {
   background: var(--field);
   color: var(--ink);
   padding: 0 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
 input:focus {
@@ -173,12 +199,22 @@ input:focus {
 
 .shell {
   width: min(1800px, calc(100vw - 28px));
-  margin: 0 auto;
-  padding: 18px 0 24px;
+  margin: 18px auto 28px;
+  padding: 10px;
+  border: 1px solid var(--shell-border);
+  border-radius: var(--window-radius);
+  background: var(--shell-bg);
+  box-shadow: var(--shell-shadow);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  overflow: hidden;
 }
 
 .masthead {
+  position: relative;
   border: 1px solid var(--line);
+  border-radius: calc(var(--window-radius) - 6px) calc(var(--window-radius) - 6px)
+    var(--panel-radius) var(--panel-radius);
   background-color: var(--panel);
   background-image:
     var(--glass-reflect),
@@ -188,12 +224,27 @@ input:focus {
   -webkit-backdrop-filter: var(--glass-filter);
 }
 
+.masthead::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 15px;
+  width: 42px;
+  height: 12px;
+  opacity: var(--mac-controls-opacity);
+  background:
+    radial-gradient(circle at 6px 6px, #ff5f57 0 5px, transparent 5.6px),
+    radial-gradient(circle at 21px 6px, #febc2e 0 5px, transparent 5.6px),
+    radial-gradient(circle at 36px 6px, #28c840 0 5px, transparent 5.6px);
+  pointer-events: none;
+}
+
 .wordmark {
-  padding: 22px 18px 20px;
+  padding: 36px 18px 18px;
   color: var(--ink);
-  font-size: clamp(40px, 7vw, 92px);
+  font-size: clamp(36px, 4.6vw, 72px);
   font-weight: 700;
-  line-height: 0.9;
+  line-height: 0.92;
   letter-spacing: 0;
   text-transform: uppercase;
   text-shadow: var(--wordmark-shadow);
@@ -229,7 +280,7 @@ input:focus {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto auto;
   gap: 8px;
-  margin: 12px 0;
+  margin: 10px 0;
 }
 
 .settings-strip {
@@ -239,6 +290,7 @@ input:focus {
   gap: 8px;
   margin: 0 0 12px;
   border: 1px solid var(--line);
+  border-radius: var(--panel-radius);
   background-color: var(--panel);
   background-image:
     var(--glass-reflect),
@@ -257,9 +309,14 @@ input:focus {
 }
 
 .toggle-label input {
+  order: 2;
   width: 18px;
   min-height: 18px;
   accent-color: var(--accent);
+}
+
+.toggle-label span {
+  order: 1;
 }
 
 .settings-status {
@@ -271,12 +328,13 @@ input:focus {
 .board {
   display: grid;
   grid-template-columns: repeat(6, minmax(190px, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .column {
   min-height: 310px;
   border: 1px solid var(--line);
+  border-radius: var(--panel-radius);
   background-color: var(--panel);
   background-image:
     var(--glass-reflect),
@@ -293,24 +351,25 @@ input:focus {
   display: flex;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
-  padding: 9px;
+  padding: 10px 11px;
   font-size: 12px;
   color: var(--muted);
 }
 
 .task-list {
   min-height: 250px;
-  padding: 8px;
+  padding: 9px;
 }
 
 .task-card {
   border: 1px solid var(--line);
+  border-radius: var(--card-radius);
   background-color: var(--panel-2);
   background-image:
     var(--glass-reflect),
     var(--glass-card);
   padding: 9px;
-  margin-bottom: 8px;
+  margin-bottom: 9px;
   cursor: pointer;
   box-shadow: var(--card-shadow);
   backdrop-filter: var(--glass-filter);
@@ -320,6 +379,7 @@ input:focus {
 .task-card:hover,
 .task-card.selected {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .task-id {
@@ -378,12 +438,13 @@ input:focus {
 
 .command {
   border: 1px solid var(--line);
+  border-radius: var(--panel-radius);
   background-color: var(--panel);
   background-image:
     var(--glass-reflect),
     var(--chrome);
   min-height: 330px;
-  margin-top: 12px;
+  margin-top: 10px;
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
 }
@@ -397,6 +458,7 @@ input:focus {
 
 .agent-card {
   border: 1px solid var(--line);
+  border-radius: var(--card-radius);
   background-color: var(--field);
   background-image:
     var(--glass-reflect),
@@ -420,6 +482,7 @@ input:focus {
   overflow: auto;
   padding: 8px;
   color: var(--ink);
+  font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -470,6 +533,7 @@ input:focus {
   max-height: min(820px, calc(100vh - 48px));
   overflow: auto;
   border: 1px solid var(--accent);
+  border-radius: var(--panel-radius);
   background-color: var(--modal-bg);
   background-image:
     var(--glass-reflect),
@@ -528,7 +592,7 @@ input:focus {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--ink);
-  font: inherit;
+  font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -561,7 +625,8 @@ input:focus {
 @media (max-width: 720px) {
   .shell {
     width: calc(100vw - 16px);
-    padding-top: 8px;
+    margin: 8px auto 16px;
+    padding: 8px;
   }
 
   .toolbar {
