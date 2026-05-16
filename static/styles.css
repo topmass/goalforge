@@ -183,6 +183,8 @@ input:focus {
 }
 
 .shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 100vh;
   margin: 0;
@@ -360,6 +362,7 @@ input:focus {
   display: grid;
   grid-template-columns: repeat(6, minmax(190px, 1fr));
   gap: 10px;
+  flex: 0 0 auto;
 }
 
 .column {
@@ -479,10 +482,13 @@ input:focus {
   background-image:
     var(--glass-reflect),
     var(--chrome);
+  flex: 1 1 320px;
   min-height: 320px;
   margin-top: 10px;
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
+  display: flex;
+  flex-direction: column;
 }
 
 .command-grid {
@@ -490,6 +496,7 @@ input:focus {
   grid-template-columns: repeat(2, minmax(360px, 1fr));
   gap: 8px;
   padding: 8px;
+  flex: 1;
 }
 
 .agent-card {
@@ -514,7 +521,8 @@ input:focus {
 }
 
 .terminal {
-  height: 172px;
+  height: 100%;
+  min-height: 172px;
   overflow: auto;
   padding: 8px;
   color: var(--ink);
@@ -660,6 +668,7 @@ input:focus {
 
 @media (max-width: 720px) {
   .shell {
+    display: block;
     width: 100%;
     margin: 0;
     padding: 8px;
