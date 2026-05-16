@@ -49,8 +49,8 @@
     rgba(224, 241, 238, 0.28) 48%,
     rgba(224, 241, 238, 0.12) 100%
   );
-  --masthead-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 18px 48px rgba(52, 77, 72, 0.14);
-  --wordmark-shadow: 0 14px 32px rgba(47, 93, 84, 0.16);
+  --masthead-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --wordmark-shadow: 0 1px 0 rgba(255, 255, 255, 0.64);
   --button-bg: rgba(12, 31, 27, 0.94);
   --button-ink: #f8fffc;
   --grid-line: rgba(45, 81, 75, 0.035);
@@ -64,20 +64,19 @@
   --background-image: linear-gradient(transparent, transparent);
   --modal-backdrop: rgba(236, 246, 244, 0.78);
   --modal-bg: rgba(253, 255, 254, 0.96);
-  --modal-shadow: 0 26px 90px rgba(59, 88, 82, 0.24);
+  --modal-shadow: 0 18px 50px rgba(59, 88, 82, 0.16);
   --shell-bg: linear-gradient(
     145deg,
     rgba(255, 255, 255, 0.48),
     rgba(255, 255, 255, 0.2) 48%,
     rgba(218, 237, 233, 0.16)
   );
-  --shell-border: rgba(255, 255, 255, 0.66);
-  --shell-shadow: 0 30px 110px rgba(41, 68, 63, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.78);
-  --card-shadow: 0 14px 34px rgba(43, 76, 70, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --window-radius: 18px;
+  --shell-border: rgba(255, 255, 255, 0.56);
+  --shell-shadow: 0 14px 42px rgba(41, 68, 63, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  --card-shadow: 0 5px 16px rgba(43, 76, 70, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.54);
+  --window-radius: 14px;
   --panel-radius: 12px;
   --card-radius: 8px;
-  --mac-controls-opacity: 1;
   --ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
@@ -119,7 +118,6 @@
   --window-radius: 0;
   --panel-radius: 0;
   --card-radius: 0;
-  --mac-controls-opacity: 0;
   --ui: var(--mono);
 }
 
@@ -160,8 +158,8 @@ button {
   border: 1px solid var(--ink);
   background: var(--button-bg);
   color: var(--button-ink);
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: 40px;
+  padding: 0 16px;
   cursor: pointer;
 }
 
@@ -199,7 +197,7 @@ input:focus {
 
 .shell {
   width: min(1800px, calc(100vw - 28px));
-  margin: 18px auto 28px;
+  margin: 12px auto 24px;
   padding: 10px;
   border: 1px solid var(--shell-border);
   border-radius: var(--window-radius);
@@ -212,9 +210,12 @@ input:focus {
 
 .masthead {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   border: 1px solid var(--line);
-  border-radius: calc(var(--window-radius) - 6px) calc(var(--window-radius) - 6px)
-    var(--panel-radius) var(--panel-radius);
+  border-radius: var(--panel-radius);
   background-color: var(--panel);
   background-image:
     var(--glass-reflect),
@@ -222,32 +223,56 @@ input:focus {
   box-shadow: var(--masthead-shadow);
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
+  padding: 14px 16px;
 }
 
-.masthead::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  left: 15px;
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
   width: 42px;
-  height: 12px;
-  opacity: var(--mac-controls-opacity);
+  height: 42px;
+  border: 1px solid rgba(23, 107, 88, 0.28);
+  border-radius: 11px;
   background:
-    radial-gradient(circle at 6px 6px, #ff5f57 0 5px, transparent 5.6px),
-    radial-gradient(circle at 21px 6px, #febc2e 0 5px, transparent 5.6px),
-    radial-gradient(circle at 36px 6px, #28c840 0 5px, transparent 5.6px);
-  pointer-events: none;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.18)),
+    linear-gradient(135deg, rgba(23, 107, 88, 0.16), rgba(75, 117, 165, 0.1));
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="dark"] .brand-mark {
+  border-color: var(--line);
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: none;
+  color: var(--muted);
 }
 
 .wordmark {
-  padding: 36px 18px 18px;
+  padding: 0;
   color: var(--ink);
-  font-size: clamp(36px, 4.6vw, 72px);
-  font-weight: 700;
-  line-height: 0.92;
+  font-size: 26px;
+  font-weight: 760;
+  line-height: 1;
   letter-spacing: 0;
   text-transform: uppercase;
   text-shadow: var(--wordmark-shadow);
+}
+
+.brand-subtitle {
+  margin-top: 4px;
+  color: var(--dim);
+  font-size: 11px;
 }
 
 .mastline,
@@ -256,10 +281,35 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid var(--line);
-  padding: 8px 10px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.mastline {
+  justify-content: flex-end;
+  border: 0;
+  padding: 0;
+}
+
+#connection {
+  border: 1px solid rgba(23, 107, 88, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--accent);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] #connection {
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.panel-title {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 11px;
 }
 
 .selected-task {
@@ -278,7 +328,7 @@ input:focus {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
   gap: 8px;
   margin: 10px 0;
 }
@@ -295,7 +345,7 @@ input:focus {
   background-image:
     var(--glass-reflect),
     var(--chrome);
-  padding: 8px;
+  padding: 8px 10px;
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
 }
@@ -332,7 +382,7 @@ input:focus {
 }
 
 .column {
-  min-height: 310px;
+  min-height: 300px;
   border: 1px solid var(--line);
   border-radius: var(--panel-radius);
   background-color: var(--panel);
@@ -379,7 +429,12 @@ input:focus {
 .task-card:hover,
 .task-card.selected {
   border-color: var(--accent);
-  transform: translateY(-1px);
+  background-color: rgba(255, 255, 255, 0.68);
+}
+
+:root[data-theme="dark"] .task-card:hover,
+:root[data-theme="dark"] .task-card.selected {
+  background-color: var(--panel-2);
 }
 
 .task-id {
@@ -443,7 +498,7 @@ input:focus {
   background-image:
     var(--glass-reflect),
     var(--chrome);
-  min-height: 330px;
+  min-height: 320px;
   margin-top: 10px;
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
@@ -645,6 +700,11 @@ input:focus {
     flex-direction: column;
   }
 
+  .masthead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .command-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -659,7 +719,7 @@ input:focus {
   }
 
   .wordmark {
-    font-size: 38px;
+    font-size: 25px;
   }
 }
 
