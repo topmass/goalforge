@@ -1,4 +1,4 @@
-import { BoardStore } from "../board/store.ts";
+import { BoardStore, readConfig } from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, QueuedMessage, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { gitCommitAll, gitDiffStat, gitStatus, prepareTaskWorktree } from "./git_utils.ts";
@@ -28,7 +28,7 @@ export class GoalForgeWorker {
     this.store = store;
     this.onEvent = options.onEvent;
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent));
+      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
   }
 
   async runNext(): Promise<Task> {

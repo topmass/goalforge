@@ -35,7 +35,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   border-radius: 0;
   font: inherit;
 }
@@ -61,6 +62,14 @@ input {
   background: #030303;
   color: var(--ink);
   padding: 0 12px;
+}
+
+select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  background: #030303;
+  color: var(--ink);
+  padding: 0 8px;
 }
 
 input:focus {
@@ -121,6 +130,36 @@ input:focus {
   grid-template-columns: minmax(260px, 1fr) auto auto;
   gap: 8px;
   margin: 12px 0;
+}
+
+.settings-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  background: rgba(6, 6, 6, 0.92);
+  padding: 8px;
+}
+
+.settings-strip label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.toggle-label input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.settings-status {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 11px;
 }
 
 .board {

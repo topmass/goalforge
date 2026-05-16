@@ -1,4 +1,5 @@
 import { ActivityEventInput } from "../board/types.ts";
+import { GoalForgeConfig, readConfig } from "../board/store.ts";
 
 export interface CodexEventHandler {
   (event: ActivityEventInput): void;
@@ -50,7 +51,11 @@ export class CodexAppServerClient implements CodexClient {
     }
     | null = null;
 
-  constructor(private readonly onEvent: CodexEventHandler = () => {}) {}
+  constructor(
+    private readonly onEvent: CodexEventHandler = () => {},
+    private readonly settings: Pick<GoalForgeConfig, "model" | "reasoningEffort" | "fastMode"> =
+      readConfig(Deno.cwd()),
+  ) {}
 
   async startSession(cwd: string): Promise<CodexSession> {
     await this.start(cwd);
@@ -65,9 +70,12 @@ export class CodexAppServerClient implements CodexClient {
     await this.notify("initialized", {});
     const response = await this.request("thread/start", {
       cwd,
+      model: this.settings.model,
+      serviceTier: this.settings.fastMode ? "fast" : null,
       approvalPolicy: "never",
       approvalsReviewer: "user",
       sandbox: "danger-full-access",
+      config: { model_reasoning_effort: this.settings.reasoningEffort },
       serviceName: "GoalForge",
       threadSource: "user",
       sessionStartSource: "startup",
@@ -93,9 +101,12 @@ export class CodexAppServerClient implements CodexClient {
     const response = await this.request("thread/resume", {
       threadId,
       cwd,
+      model: this.settings.model,
+      serviceTier: this.settings.fastMode ? "fast" : null,
       approvalPolicy: "never",
       approvalsReviewer: "user",
       sandbox: "danger-full-access",
+      config: { model_reasoning_effort: this.settings.reasoningEffort },
     });
     const thread = response.thread as { id?: string } | undefined;
     if (!thread?.id) {
@@ -113,6 +124,9 @@ export class CodexAppServerClient implements CodexClient {
       threadId: session.threadId,
       input: [{ type: "text", text: input.prompt, text_elements: [] }],
       cwd: session.cwd,
+      model: this.settings.model,
+      effort: this.settings.reasoningEffort,
+      serviceTier: this.settings.fastMode ? "fast" : null,
       approvalPolicy: "never",
       approvalsReviewer: "user",
       sandboxPolicy: { type: "dangerFullAccess" },

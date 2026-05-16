@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
-import { BoardStore } from "../src/board/store.ts";
+import { BoardStore, readConfig, updateConfig } from "../src/board/store.ts";
 
 Deno.test("init creates local runtime files and prompt templates", () => {
   const root = Deno.makeTempDirSync();
@@ -27,6 +27,27 @@ Deno.test("goal creates an initial ready task", () => {
     assertEquals(task.id, "TASK-1");
     assertEquals(task.status, "ready");
     assertStringIncludes(task.acceptanceCriteria, "validation evidence");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("config stores model, reasoning, and fast mode", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    assertEquals(readConfig(root).model, "gpt-5.5");
+    const config = updateConfig(root, {
+      model: "gpt-5.4",
+      reasoningEffort: "medium",
+      fastMode: false,
+    });
+    assertEquals(config.model, "gpt-5.4");
+    assertEquals(config.reasoningEffort, "medium");
+    assertEquals(config.fastMode, false);
+    assertEquals(readConfig(root).reasoningEffort, "medium");
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });

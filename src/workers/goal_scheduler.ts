@@ -1,5 +1,6 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { readConfig } from "../board/store.ts";
 
 export interface ScheduleDecision {
   taskIds: string[];
@@ -21,7 +22,7 @@ export class GoalScheduler {
 
   constructor(private readonly root: string, private readonly options: GoalSchedulerOptions = {}) {
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent));
+      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
   }
 
   async selectBatch(tasks: Task[], maxConcurrency: number): Promise<ScheduleDecision> {

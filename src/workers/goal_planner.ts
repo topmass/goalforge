@@ -1,5 +1,6 @@
 import { ActivityEventInput, TaskDraft } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { readConfig } from "../board/store.ts";
 
 export interface GoalPlannerOptions {
   onEvent?: (event: ActivityEventInput) => void;
@@ -22,7 +23,7 @@ export class GoalPlanner {
     this.onEvent = options.onEvent;
     this.projectMemory = options.projectMemory;
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent));
+      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
   }
 
   async plan(goalText: string): Promise<TaskDraft[]> {

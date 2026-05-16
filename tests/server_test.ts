@@ -20,6 +20,17 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     const html = await fetch(`${server.url}/`).then((response) => response.text());
     assertStringIncludes(html, "GoalForge");
 
+    const configResponse = await fetch(`${server.url}/api/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-5.4", reasoningEffort: "medium", fastMode: false }),
+    });
+    assertEquals(configResponse.ok, true);
+    const config = await configResponse.json();
+    assertEquals(config.model, "gpt-5.4");
+    assertEquals(config.reasoningEffort, "medium");
+    assertEquals(config.fastMode, false);
+
     const create = await fetch(`${server.url}/api/goals`, {
       method: "POST",
       headers: { "content-type": "application/json" },

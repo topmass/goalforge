@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BoardStore } from "../board/store.ts";
+import { BoardStore, readConfig, ReasoningEffort, updateConfig } from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
@@ -117,6 +117,33 @@ export function startServer(
 
         if (url.pathname === "/api/board" && request.method === "GET") {
           return json(store.getBoard());
+        }
+
+        if (url.pathname === "/api/config" && request.method === "GET") {
+          return json(readConfig(normalizedRoot));
+        }
+
+        if (url.pathname === "/api/config" && request.method === "PATCH") {
+          const body = await readJson<Record<string, unknown>>(request);
+          const config = updateConfig(normalizedRoot, {
+            model: typeof body.model === "string" ? body.model : undefined,
+            reasoningEffort: typeof body.reasoningEffort === "string"
+              ? body.reasoningEffort as ReasoningEffort
+              : undefined,
+            fastMode: typeof body.fastMode === "boolean" ? body.fastMode : undefined,
+          });
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "settings",
+              "config",
+              `Model ${config.model}, reasoning ${config.reasoningEffort}, fast ${
+                config.fastMode ? "on" : "off"
+              }.`,
+            ),
+          );
+          return json(config);
         }
 
         if (url.pathname === "/api/goals" && request.method === "POST") {

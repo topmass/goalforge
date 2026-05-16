@@ -1,5 +1,6 @@
 const state = {
   board: { goals: [], tasks: [], runs: [], events: [], statuses: [] },
+  config: null,
   selectedTaskId: null,
   draggedTaskId: null,
 };
@@ -11,6 +12,10 @@ const goalTextEl = document.querySelector("#goalText");
 const selectedTaskEl = document.querySelector("#selectedTask");
 const taskModalEl = document.querySelector("#taskModal");
 const taskModalContentEl = document.querySelector("#taskModalContent");
+const modelSelectEl = document.querySelector("#modelSelect");
+const reasoningSelectEl = document.querySelector("#reasoningSelect");
+const fastModeEl = document.querySelector("#fastMode");
+const settingsStatusEl = document.querySelector("#settingsStatus");
 
 document.querySelector("#addGoal").addEventListener("click", addGoal);
 document.querySelector("#startGoalforge").addEventListener(
@@ -25,14 +30,49 @@ taskModalContentEl.addEventListener("click", (event) => event.stopPropagation())
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeTaskModal();
 });
+modelSelectEl.addEventListener("change", saveConfig);
+reasoningSelectEl.addEventListener("change", saveConfig);
+fastModeEl.addEventListener("change", saveConfig);
 
 connectEvents();
+loadConfig();
 loadBoard();
 
 async function loadBoard() {
   const response = await fetch("/api/board");
   state.board = await response.json();
   render();
+}
+
+async function loadConfig() {
+  const response = await fetch("/api/config");
+  state.config = await response.json();
+  renderConfig();
+}
+
+async function saveConfig() {
+  settingsStatusEl.textContent = "SAVING";
+  state.config = await fetch("/api/config", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: modelSelectEl.value,
+      reasoningEffort: reasoningSelectEl.value,
+      fastMode: fastModeEl.checked,
+    }),
+  }).then((response) => response.json());
+  renderConfig();
+}
+
+function renderConfig() {
+  if (!state.config) return;
+  modelSelectEl.value = state.config.model;
+  reasoningSelectEl.value = state.config.reasoningEffort;
+  fastModeEl.checked = Boolean(state.config.fastMode);
+  settingsStatusEl.textContent =
+    `${state.config.model} / ${state.config.reasoningEffort.toUpperCase()} / ${
+      state.config.fastMode ? "FAST" : "STANDARD"
+    }`;
 }
 
 function connectEvents() {

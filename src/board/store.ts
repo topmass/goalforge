@@ -25,6 +25,20 @@ import {
   TransitionResult,
 } from "./types.ts";
 
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+export interface GoalForgeConfig {
+  name: string;
+  port: number;
+  workerMode: "codex";
+  maxConcurrentAgents: number;
+  codexTransport: "stdio";
+  boardStates: readonly TaskStatus[];
+  model: string;
+  reasoningEffort: ReasoningEffort;
+  fastMode: boolean;
+}
+
 const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ["ready", "blocked"],
   ready: ["in_progress", "blocked", "inbox"],
@@ -508,22 +522,61 @@ function ensureConfig(root: string): void {
   try {
     Deno.statSync(target);
   } catch {
-    Deno.writeTextFileSync(
-      target,
-      JSON.stringify(
-        {
-          name: "GoalForge",
-          port: 4733,
-          workerMode: "codex",
-          maxConcurrentAgents: 2,
-          codexTransport: "stdio",
-          boardStates: TASK_STATUSES,
-        },
-        null,
-        2,
-      ) + "\n",
-    );
+    Deno.writeTextFileSync(target, JSON.stringify(defaultConfig(), null, 2) + "\n");
   }
+}
+
+export function readConfig(root: string): GoalForgeConfig {
+  try {
+    const parsed = JSON.parse(Deno.readTextFileSync(configPath(root))) as Record<string, unknown>;
+    return normalizeConfig(parsed);
+  } catch {
+    return defaultConfig();
+  }
+}
+
+export function updateConfig(root: string, patch: Partial<GoalForgeConfig>): GoalForgeConfig {
+  ensureRuntimeDirectories(root);
+  const config = normalizeConfig({ ...readConfig(root), ...patch });
+  Deno.writeTextFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
+  return config;
+}
+
+function defaultConfig(): GoalForgeConfig {
+  return {
+    name: "GoalForge",
+    port: 4733,
+    workerMode: "codex",
+    maxConcurrentAgents: 2,
+    codexTransport: "stdio",
+    boardStates: TASK_STATUSES,
+    model: "gpt-5.5",
+    reasoningEffort: "high",
+    fastMode: true,
+  };
+}
+
+function normalizeConfig(value: Record<string, unknown>): GoalForgeConfig {
+  const defaults = defaultConfig();
+  const reasoning = typeof value.reasoningEffort === "string" &&
+      ["low", "medium", "high", "xhigh"].includes(value.reasoningEffort)
+    ? value.reasoningEffort as ReasoningEffort
+    : defaults.reasoningEffort;
+  return {
+    ...defaults,
+    port: typeof value.port === "number" && Number.isInteger(value.port)
+      ? value.port
+      : defaults.port,
+    maxConcurrentAgents:
+      typeof value.maxConcurrentAgents === "number" && Number.isInteger(value.maxConcurrentAgents)
+        ? value.maxConcurrentAgents
+        : defaults.maxConcurrentAgents,
+    model: typeof value.model === "string" && value.model.trim()
+      ? value.model.trim()
+      : defaults.model,
+    reasoningEffort: reasoning,
+    fastMode: typeof value.fastMode === "boolean" ? value.fastMode : defaults.fastMode,
+  };
 }
 
 function ensurePrompts(root: string): void {

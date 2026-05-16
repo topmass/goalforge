@@ -2,7 +2,7 @@ import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
-import { BoardStore } from "../board/store.ts";
+import { BoardStore, readConfig } from "../board/store.ts";
 
 export interface GoalReviewerOptions {
   onEvent?: (event: ActivityEventInput) => void;
@@ -23,7 +23,7 @@ export class GoalReviewer {
 
   constructor(private readonly root: string, private readonly options: GoalReviewerOptions = {}) {
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent));
+      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
   }
 
   async review(task: Task): Promise<ReviewResult> {
