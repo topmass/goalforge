@@ -17,6 +17,7 @@ const modelSelectEl = document.querySelector("#modelSelect");
 const reasoningSelectEl = document.querySelector("#reasoningSelect");
 const fastModeEl = document.querySelector("#fastMode");
 const githubPrReviewEl = document.querySelector("#githubPrReview");
+const themeModeEl = document.querySelector("#themeMode");
 const settingsStatusEl = document.querySelector("#settingsStatus");
 const runtimeStatusEl = document.querySelector("#runtimeStatus");
 
@@ -37,7 +38,11 @@ modelSelectEl.addEventListener("change", saveConfig);
 reasoningSelectEl.addEventListener("change", saveConfig);
 fastModeEl.addEventListener("change", saveConfig);
 githubPrReviewEl.addEventListener("change", saveConfig);
+themeModeEl.addEventListener("change", () => {
+  applyTheme(themeModeEl.checked ? "dark" : "light");
+});
 
+applyTheme(localStorage.getItem("goalforge-theme") || "light");
 connectEvents();
 loadConfig();
 loadRuntime();
@@ -86,6 +91,13 @@ function renderConfig() {
     `${state.config.model} / ${state.config.reasoningEffort.toUpperCase()} / ${
       state.config.fastMode ? "FAST" : "STANDARD"
     } / ${state.config.githubPrReview ? "PR GATE" : "LOCAL MERGE"}`;
+}
+
+function applyTheme(theme) {
+  const selected = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = selected;
+  localStorage.setItem("goalforge-theme", selected);
+  themeModeEl.checked = selected === "dark";
 }
 
 function renderRuntime() {
@@ -237,7 +249,7 @@ function taskCard(task) {
   }
     <div class="task-meta">
       <span>P${task.priority}</span>
-      <span>${task.status === "done" ? "MERGED" : task.branchName ? "BRANCH" : "QUEUED"}</span>
+      <span>${escapeHtml(statusBadge(task))}</span>
     </div>
     <div class="card-actions">
       ${canStart ? `<button class="card-action" data-action="start">START</button>` : ""}
@@ -456,6 +468,15 @@ function shortMessage(value) {
 
 function labelFor(status) {
   return state.board.statuses.find((item) => item.id === status)?.label || status;
+}
+
+function statusBadge(task) {
+  if (task.status === "blocked") return "NEEDS INPUT";
+  if (task.status === "done") return "MERGED";
+  if (task.status === "merging") return "MERGING";
+  if (task.status === "review") return "REVIEWING";
+  if (task.status === "in_progress") return task.branchName ? "ACTIVE" : "STARTED";
+  return task.branchName ? "BRANCH" : "QUEUED";
 }
 
 function timeOnly(value) {

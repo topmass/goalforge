@@ -3,6 +3,7 @@ export const TASK_STATUSES = [
   "ready",
   "in_progress",
   "review",
+  "merging",
   "blocked",
   "done",
 ] as const;
@@ -14,6 +15,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   ready: "Ready",
   in_progress: "Started",
   review: "Review",
+  merging: "Merging",
   blocked: "Inbox",
   done: "Done",
 };

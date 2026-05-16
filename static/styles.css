@@ -1,4 +1,39 @@
 :root {
+  color-scheme: light;
+  --bg: #f6fbfc;
+  --panel: rgba(255, 255, 255, 0.78);
+  --panel-2: rgba(255, 255, 255, 0.9);
+  --ink: #14211f;
+  --muted: #2d514b;
+  --dim: #5b716d;
+  --line: #b5cbc6;
+  --accent: #277960;
+  --hot: #06100e;
+  --warn: #6d5a10;
+  --field: rgba(255, 255, 255, 0.92);
+  --chrome: rgba(250, 254, 255, 0.74);
+  --masthead-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(225, 242, 239, 0.82));
+  --masthead-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 18px 48px rgba(82, 117, 111, 0.16);
+  --wordmark-shadow: 0 14px 32px rgba(80, 126, 117, 0.18);
+  --button-bg: #13231f;
+  --button-ink: #f8fffc;
+  --grid-line: rgba(45, 81, 75, 0.08);
+  --page-wash: linear-gradient(
+    135deg,
+    rgba(216, 237, 233, 0.9),
+    rgba(255, 255, 255, 0.54) 38%,
+    rgba(236, 244, 255, 0.8)
+  );
+  --modal-backdrop: rgba(236, 246, 244, 0.78);
+  --modal-bg: rgba(253, 255, 254, 0.96);
+  --modal-shadow: 0 26px 90px rgba(59, 88, 82, 0.24);
+  --card-shadow: 0 10px 28px rgba(43, 76, 70, 0.06);
+  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #050607;
   --panel: #0a0d0f;
@@ -10,7 +45,19 @@
   --accent: #b9f7cf;
   --hot: #fff;
   --warn: #dedede;
-  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --field: #030303;
+  --chrome: rgba(6, 6, 6, 0.92);
+  --masthead-bg: linear-gradient(180deg, rgba(12, 17, 18, 0.96), rgba(4, 5, 6, 0.96));
+  --masthead-shadow: inset 0 0 0 1px rgba(185, 247, 207, 0.08);
+  --wordmark-shadow: 0 0 24px rgba(185, 247, 207, 0.2);
+  --button-bg: var(--ink);
+  --button-ink: var(--bg);
+  --grid-line: rgba(255, 255, 255, 0.025);
+  --page-wash: linear-gradient(transparent, transparent);
+  --modal-backdrop: rgba(0, 0, 0, 0.72);
+  --modal-bg: #07100b;
+  --modal-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  --card-shadow: none;
 }
 
 * {
@@ -28,10 +75,13 @@ body {
 }
 
 body {
+  background-color: var(--bg);
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 18px 18px;
+    var(--page-wash),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-attachment: fixed, scroll, scroll;
+  background-size: cover, 18px 18px, 18px 18px;
 }
 
 button,
@@ -43,8 +93,8 @@ select {
 
 button {
   border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--button-bg);
+  color: var(--button-ink);
   min-height: 42px;
   padding: 0 14px;
   cursor: pointer;
@@ -59,7 +109,7 @@ input {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
-  background: #030303;
+  background: var(--field);
   color: var(--ink);
   padding: 0 12px;
 }
@@ -67,7 +117,7 @@ input {
 select {
   min-height: 34px;
   border: 1px solid var(--line);
-  background: #030303;
+  background: var(--field);
   color: var(--ink);
   padding: 0 8px;
 }
@@ -84,8 +134,8 @@ input:focus {
 
 .masthead {
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(12, 17, 18, 0.96), rgba(4, 5, 6, 0.96));
-  box-shadow: inset 0 0 0 1px rgba(185, 247, 207, 0.08);
+  background: var(--masthead-bg);
+  box-shadow: var(--masthead-shadow);
 }
 
 .wordmark {
@@ -96,7 +146,7 @@ input:focus {
   line-height: 0.9;
   letter-spacing: 0;
   text-transform: uppercase;
-  text-shadow: 0 0 24px rgba(185, 247, 207, 0.2);
+  text-shadow: var(--wordmark-shadow);
 }
 
 .mastline,
@@ -139,8 +189,9 @@ input:focus {
   gap: 8px;
   margin: 0 0 12px;
   border: 1px solid var(--line);
-  background: rgba(6, 6, 6, 0.92);
+  background: var(--chrome);
   padding: 8px;
+  backdrop-filter: blur(14px);
 }
 
 .settings-strip label {
@@ -154,6 +205,7 @@ input:focus {
 .toggle-label input {
   width: 18px;
   min-height: 18px;
+  accent-color: var(--accent);
 }
 
 .settings-status {
@@ -171,7 +223,8 @@ input:focus {
 .column {
   min-height: 310px;
   border: 1px solid var(--line);
-  background: rgba(6, 6, 6, 0.92);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
 }
 
 .column.drag-over {
@@ -198,6 +251,7 @@ input:focus {
   padding: 9px;
   margin-bottom: 8px;
   cursor: pointer;
+  box-shadow: var(--card-shadow);
 }
 
 .task-card:hover,
@@ -225,7 +279,7 @@ input:focus {
   margin-top: 8px;
   border-left: 2px solid var(--accent);
   padding-left: 7px;
-  color: var(--text);
+  color: var(--ink);
   font-size: 11px;
   line-height: 1.35;
   word-break: break-word;
@@ -261,9 +315,10 @@ input:focus {
 
 .command {
   border: 1px solid var(--line);
-  background: rgba(6, 6, 6, 0.94);
+  background: var(--chrome);
   min-height: 330px;
   margin-top: 12px;
+  backdrop-filter: blur(14px);
 }
 
 .command-grid {
@@ -275,7 +330,7 @@ input:focus {
 
 .agent-card {
   border: 1px solid var(--line);
-  background: #030303;
+  background: var(--field);
   min-height: 184px;
 }
 
@@ -329,7 +384,8 @@ input:focus {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--modal-backdrop);
+  backdrop-filter: blur(8px);
 }
 
 .modal-backdrop[hidden] {
@@ -341,8 +397,8 @@ input:focus {
   max-height: min(820px, calc(100vh - 48px));
   overflow: auto;
   border: 1px solid var(--accent);
-  background: #07100b;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  background: var(--modal-bg);
+  box-shadow: var(--modal-shadow);
 }
 
 .modal-head,
