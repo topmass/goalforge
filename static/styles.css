@@ -65,16 +65,7 @@
   --modal-backdrop: rgba(236, 246, 244, 0.78);
   --modal-bg: rgba(253, 255, 254, 0.96);
   --modal-shadow: 0 18px 50px rgba(59, 88, 82, 0.16);
-  --shell-bg: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.48),
-    rgba(255, 255, 255, 0.2) 48%,
-    rgba(218, 237, 233, 0.16)
-  );
-  --shell-border: rgba(255, 255, 255, 0.56);
-  --shell-shadow: 0 14px 42px rgba(41, 68, 63, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.66);
   --card-shadow: 0 5px 16px rgba(43, 76, 70, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.54);
-  --window-radius: 14px;
   --panel-radius: 12px;
   --card-radius: 8px;
   --ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
@@ -111,11 +102,7 @@
   --modal-backdrop: rgba(0, 0, 0, 0.72);
   --modal-bg: #07100b;
   --modal-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
-  --shell-bg: transparent;
-  --shell-border: transparent;
-  --shell-shadow: none;
   --card-shadow: none;
-  --window-radius: 0;
   --panel-radius: 0;
   --card-radius: 0;
   --ui: var(--mono);
@@ -196,16 +183,10 @@ input:focus {
 }
 
 .shell {
-  width: min(1800px, calc(100vw - 28px));
-  margin: 12px auto 24px;
-  padding: 10px;
-  border: 1px solid var(--shell-border);
-  border-radius: var(--window-radius);
-  background: var(--shell-bg);
-  box-shadow: var(--shell-shadow);
-  backdrop-filter: var(--glass-filter);
-  -webkit-backdrop-filter: var(--glass-filter);
-  overflow: hidden;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 12px;
 }
 
 .masthead {
@@ -679,8 +660,8 @@ input:focus {
 
 @media (max-width: 720px) {
   .shell {
-    width: calc(100vw - 16px);
-    margin: 8px auto 16px;
+    width: 100%;
+    margin: 0;
     padding: 8px;
   }
 
