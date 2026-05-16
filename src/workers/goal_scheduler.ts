@@ -2,6 +2,7 @@ import { ActivityEventInput, Task } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 import { readConfig } from "../board/store.ts";
+import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface ScheduleDecision {
   taskIds: string[];
@@ -55,9 +56,15 @@ export class GoalScheduler {
 
     try {
       const session = await codex.startSession(this.root);
+      const workflow = readWorkflow(this.root);
       await codex.runTurn(session, {
         title: "GoalForge scheduler",
-        prompt: buildSchedulerPrompt(tasks, maxConcurrency, this.options.projectMemory),
+        prompt: buildSchedulerPrompt(
+          tasks,
+          maxConcurrency,
+          this.options.projectMemory,
+          workflow.instructions,
+        ),
       });
       const decision = parseSchedulerResponse(responseText, tasks, maxConcurrency);
       if (!decision.taskIds.length) {
@@ -91,6 +98,7 @@ function buildSchedulerPrompt(
   tasks: Task[],
   maxConcurrency: number,
   projectMemory = "No project memory was supplied.",
+  workflowInstructions = "No WORKFLOW.md instructions were supplied.",
 ): string {
   const taskList = tasks.map((task) => ({
     id: task.id,
@@ -112,6 +120,9 @@ Rules:
 - Pick independent tasks only. Avoid parallelizing tasks that likely edit the same files, depend on each other, or need the result of another task.
 - Prefer higher priority when independence is uncertain.
 - Notes should explain why the chosen tasks can run together or why only one should run.
+
+Repo WORKFLOW.md instructions:
+${workflowInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}

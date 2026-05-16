@@ -14,7 +14,9 @@ import { GoalScheduler } from "./goal_scheduler.ts";
 import { GoalTestEngineer } from "./goal_test_engineer.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
+import { runWorkflowHooks } from "./workflow_hooks.ts";
 import { PROMPTS } from "../board/prompts.ts";
+import { readWorkflow, WorkflowRuntime } from "../workflow/workflow.ts";
 
 export interface GoalForgeWorkerOptions {
   onEvent?: (event: ActivityEvent) => void;
@@ -48,9 +50,10 @@ export class GoalForgeWorker {
     return await this.runTask(task.id);
   }
 
-  async runQueue(limit = Number.POSITIVE_INFINITY, maxConcurrency = 2): Promise<Task[]> {
+  async runQueue(limit = Number.POSITIVE_INFINITY, maxConcurrency?: number): Promise<Task[]> {
     const completed: Task[] = [];
     while (completed.length < limit) {
+      const workflow = readWorkflow(this.root);
       const tasks = this.store.listDispatchableTasks(20);
       if (!tasks.length) {
         break;
@@ -65,9 +68,12 @@ export class GoalForgeWorker {
         },
       });
       const remaining = limit === Number.POSITIVE_INFINITY
-        ? maxConcurrency
+        ? maxConcurrency ?? workflow.maxConcurrentAgents
         : limit - completed.length;
-      const decision = await scheduler.selectBatch(tasks, Math.min(maxConcurrency, remaining));
+      const decision = await scheduler.selectBatch(
+        tasks,
+        Math.min(maxConcurrency ?? workflow.maxConcurrentAgents, remaining),
+      );
       this.emit(
         this.store.appendEvent(
           null,
@@ -94,6 +100,47 @@ export class GoalForgeWorker {
   }
 
   async runTask(taskId: string): Promise<Task> {
+    const workflow = readWorkflow(this.root);
+    const maxAttempts = Math.max(workflow.maxRetries, workflow.maxTurns, 1);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.runTaskAttempt(taskId);
+      } catch (error) {
+        if (attempt >= maxAttempts) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        this.emit(
+          this.store.appendEvent(
+            taskId,
+            null,
+            "orchestrator",
+            "retry",
+            `Retrying ${taskId} after failure ${attempt}/${maxAttempts}: ${message}`,
+          ),
+        );
+        try {
+          const task = this.store.getTask(taskId);
+          if (task.status === "blocked") {
+            this.emit(
+              this.store.requestTransition(
+                taskId,
+                "ready",
+                "orchestrator",
+                `Retry ${attempt + 1}/${maxAttempts} after transient failure.`,
+              ).event,
+            );
+          }
+        } catch {
+          // Preserve the original failure if the task disappeared during retry handling.
+        }
+        await delay(workflow.retryBackoffMs);
+      }
+    }
+    throw new Error(`Unable to run ${taskId}.`);
+  }
+
+  private async runTaskAttempt(taskId: string): Promise<Task> {
     let task = this.store.getTask(taskId);
     if (!["inbox", "ready", "blocked", "review"].includes(task.status)) {
       throw new Error(`Cannot start ${task.id} while it is ${task.status}.`);
@@ -119,7 +166,8 @@ export class GoalForgeWorker {
     });
 
     try {
-      const assignment = await prepareTaskWorktree(this.root, task);
+      const workflow = readWorkflow(this.root);
+      const assignment = await prepareTaskWorktree(this.root, task, workflow.worktreesDir);
       const projectInstructions = await collectAgentsInstructions(this.root);
       const projectMemory = buildProjectMemory(this.store);
       const queuedMessages = this.store.listPendingMessages(task.id);
@@ -133,6 +181,10 @@ export class GoalForgeWorker {
           `Assigned ${assignment.branchName} at ${assignment.worktreePath}.`,
         ),
       );
+      if (assignment.created) {
+        await this.runHooks(workflow, "after_create", assignment.worktreePath, task.id, run.id);
+      }
+      await this.runHooks(workflow, "before_run", assignment.worktreePath, task.id, run.id);
 
       if (task.status === "inbox") {
         this.emit(
@@ -166,26 +218,33 @@ export class GoalForgeWorker {
           this.root,
           task,
           projectInstructions,
+          workflow.instructions,
           projectMemory,
           queuedMessages,
         ),
       });
       this.store.markMessagesProcessed(queuedMessages.map((message) => message.id));
-      const testEngineer = new GoalTestEngineer(projectInstructions, projectMemory, {
-        onEvent: (event) => {
-          this.emit(
-            this.store.appendEvent(
-              task.id,
-              run.id,
-              event.role,
-              event.kind,
-              event.message,
-              event.raw,
-            ),
-          );
+      const testEngineer = new GoalTestEngineer(
+        projectInstructions,
+        projectMemory,
+        workflow.instructions,
+        {
+          onEvent: (event) => {
+            this.emit(
+              this.store.appendEvent(
+                task.id,
+                run.id,
+                event.role,
+                event.kind,
+                event.message,
+                event.raw,
+              ),
+            );
+          },
         },
-      });
+      );
       const testTurn = await testEngineer.run(codex, session, task);
+      await this.runHooks(workflow, "after_run", session.cwd, task.id, run.id);
 
       const preCommitStatus = await safeGitStatus(session.cwd);
       const preCommitDiff = await safeGitDiffStat(session.cwd);
@@ -375,12 +434,25 @@ export class GoalForgeWorker {
       release();
     }
   }
+
+  private async runHooks(
+    workflow: WorkflowRuntime,
+    stage: "after_create" | "before_run" | "after_run" | "before_remove",
+    cwd: string,
+    taskId: string,
+    runId: string,
+  ): Promise<void> {
+    for (const message of await runWorkflowHooks(workflow, stage, cwd)) {
+      this.emit(this.store.appendEvent(taskId, runId, "workflow", stage, message));
+    }
+  }
 }
 
 function buildWorkerPrompt(
   root: string,
   task: Task,
   projectInstructions: string,
+  workflowInstructions: string,
   projectMemory: string,
   queuedMessages: QueuedMessage[],
 ): string {
@@ -399,6 +471,9 @@ ${instructions}
 
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
+
+Repo WORKFLOW.md instructions:
+${workflowInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}
@@ -478,4 +553,8 @@ async function safeGitCommit(cwd: string, message: string): Promise<string | nul
 
 function isCommitFailure(commit: string | null): boolean {
   return commit?.startsWith("commit failed:") ?? false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

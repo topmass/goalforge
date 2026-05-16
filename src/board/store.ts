@@ -10,6 +10,7 @@ import {
   worktreesPath,
 } from "../paths.ts";
 import { PROMPTS } from "./prompts.ts";
+import { ensureWorkflow } from "../workflow/workflow.ts";
 import {
   ActivityEvent,
   ActivityEventInput,
@@ -70,6 +71,7 @@ export class BoardStore {
   initProject(): void {
     ensureRuntimeDirectories(this.root);
     this.ensureSchema();
+    ensureWorkflow(this.root);
     ensureConfig(this.root);
     ensurePrompts(this.root);
     ensureGitignore(this.root);
@@ -235,6 +237,43 @@ export class BoardStore {
     const run = this.getRun(runId);
     this.appendEvent(run.taskId, run.id, run.role, "run", `Run ${run.id} ${status}.`);
     return run;
+  }
+
+  recoverStaleRuns(): ActivityEvent[] {
+    const events: ActivityEvent[] = [];
+    const runningRuns = this.db.prepare("SELECT * FROM runs WHERE status = 'running'")
+      .all() as SqlRow[];
+    if (!runningRuns.length) {
+      return events;
+    }
+    const now = timestamp();
+    this.db.prepare("UPDATE runs SET status = 'failed', finished_at = ? WHERE status = 'running'")
+      .run(now);
+    events.push(
+      this.appendEvent(
+        null,
+        null,
+        "orchestrator",
+        "startup",
+        `Recovered ${runningRuns.length} stale running run${
+          runningRuns.length === 1 ? "" : "s"
+        } after restart.`,
+      ),
+    );
+    const stuckTasks = this.db.prepare("SELECT * FROM tasks WHERE status = 'in_progress'")
+      .all() as SqlRow[];
+    for (const row of stuckTasks) {
+      const task = taskFromRow(row);
+      events.push(
+        this.requestTransition(
+          task.id,
+          "blocked",
+          "orchestrator",
+          "GoalForge restarted while this task was running. Add a message or restart it.",
+        ).event,
+      );
+    }
+    return events;
   }
 
   getRun(id: string): Run {

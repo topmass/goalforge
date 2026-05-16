@@ -31,6 +31,11 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertEquals(config.reasoningEffort, "medium");
     assertEquals(config.fastMode, false);
 
+    const runtime = await fetch(`${server.url}/api/runtime`).then((response) => response.json());
+    assertEquals(runtime.queueRunning, false);
+    assertEquals(runtime.workflow.trackerKind, "goalforge-local");
+    assertEquals(runtime.runningRuns.length, 0);
+
     const create = await fetch(`${server.url}/api/goals`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -2,6 +2,7 @@ import { ActivityEventInput, TaskDraft } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 import { readConfig } from "../board/store.ts";
+import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalPlannerOptions {
   onEvent?: (event: ActivityEventInput) => void;
@@ -48,9 +49,10 @@ export class GoalPlanner {
 
     try {
       const session = await codex.startSession(this.root);
+      const workflow = readWorkflow(this.root);
       await codex.runTurn(session, {
         title: "GoalForge goal compiler",
-        prompt: buildPlannerPrompt(goalText, this.projectMemory),
+        prompt: buildPlannerPrompt(goalText, this.projectMemory, workflow.instructions),
       });
       return parsePlannerResponse(responseText);
     } finally {
@@ -97,6 +99,7 @@ export function parsePlannerResponse(responseText: string): TaskDraft[] {
 function buildPlannerPrompt(
   goalText: string,
   projectMemory = "No project memory was supplied.",
+  workflowInstructions = "No WORKFLOW.md instructions were supplied.",
 ): string {
   return `You are the GoalForge prompt compiler for a local coding project.
 
@@ -115,6 +118,9 @@ Rules:
 - Mention dependency, parallelization, or delegation notes in workpad.
 - Do not ask the user follow-up questions. Make reasonable assumptions and encode them in the prompt.
 - Do not include unrelated cleanup.
+
+Repo WORKFLOW.md instructions:
+${workflowInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}

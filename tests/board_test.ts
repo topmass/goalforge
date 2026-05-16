@@ -9,6 +9,7 @@ Deno.test("init creates local runtime files and prompt templates", () => {
     assertEquals(Deno.statSync(`${root}/.goalforge/board.sqlite`).isFile, true);
     assertEquals(Deno.statSync(`${root}/.goalforge/config.json`).isFile, true);
     assertEquals(Deno.statSync(`${root}/.goalforge/prompts/constitution.md`).isFile, true);
+    assertEquals(Deno.statSync(`${root}/WORKFLOW.md`).isFile, true);
     assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.goalforge/");
     assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.omx/");
   } finally {
@@ -120,6 +121,24 @@ Deno.test("running runs prevent duplicate task claims", () => {
       Error,
       "already has a running agent",
     );
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("startup recovery blocks stale started tasks", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Recover stale started task");
+    store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.createRun(task.id, "worker");
+    const events = store.recoverStaleRuns();
+    assertEquals(events.length, 2);
+    assertEquals(store.getTask(task.id).status, "blocked");
+    assertEquals(store.getBoard().runs[0].status, "failed");
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });

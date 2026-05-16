@@ -16,6 +16,7 @@ export class GoalTestEngineer {
   constructor(
     private readonly projectInstructions: string,
     private readonly projectMemory: string,
+    private readonly workflowInstructions: string,
     private readonly options: GoalTestEngineerOptions = {},
   ) {}
 
@@ -33,16 +34,29 @@ export class GoalTestEngineer {
     });
     return await client.runTurn(session, {
       title: `${task.id}: test-engineer`,
-      prompt: buildTestPrompt(task, this.projectInstructions, this.projectMemory),
+      prompt: buildTestPrompt(
+        task,
+        this.projectInstructions,
+        this.projectMemory,
+        this.workflowInstructions,
+      ),
     });
   }
 }
 
-function buildTestPrompt(task: Task, projectInstructions: string, projectMemory: string): string {
+function buildTestPrompt(
+  task: Task,
+  projectInstructions: string,
+  projectMemory: string,
+  workflowInstructions: string,
+): string {
   return `You are the GoalForge test engineer for one local coding task.
 
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
+
+Repo WORKFLOW.md instructions:
+${workflowInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}

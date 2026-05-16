@@ -4,6 +4,7 @@ import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 import { BoardStore, readConfig } from "../board/store.ts";
+import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalReviewerOptions {
   onEvent?: (event: ActivityEventInput) => void;
@@ -34,6 +35,7 @@ export class GoalReviewer {
     let responseText = "";
     const projectInstructions = await collectAgentsInstructions(this.root);
     const store = new BoardStore(this.root);
+    const workflow = readWorkflow(this.root);
     let projectMemory = "";
     try {
       projectMemory = buildProjectMemory(store);
@@ -60,7 +62,7 @@ export class GoalReviewer {
       const session = await codex.startSession(task.worktreePath);
       await codex.runTurn(session, {
         title: `${task.id}: review`,
-        prompt: buildReviewPrompt(task, projectInstructions, projectMemory),
+        prompt: buildReviewPrompt(task, projectInstructions, projectMemory, workflow.instructions),
       });
       return parseReviewResponse(responseText);
     } finally {
@@ -78,13 +80,21 @@ export function parseReviewResponse(responseText: string): ReviewResult {
   return { verdict, notes };
 }
 
-function buildReviewPrompt(task: Task, projectInstructions: string, projectMemory: string): string {
+function buildReviewPrompt(
+  task: Task,
+  projectInstructions: string,
+  projectMemory: string,
+  workflowInstructions: string,
+): string {
   return `You are the GoalForge reviewer for one local coding task.
 
 Review the implementation in this assigned worktree. Do not modify files.
 
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
+
+Repo WORKFLOW.md instructions:
+${workflowInstructions}
 
 Current GoalForge board memory:
 ${projectMemory}

@@ -14,6 +14,10 @@ export function configPath(root: string): string {
   return runtimePath(root, "config.json");
 }
 
+export function workflowPath(root: string): string {
+  return path.join(root, "WORKFLOW.md");
+}
+
 export function promptsPath(root: string): string {
   return runtimePath(root, "prompts");
 }

@@ -8,6 +8,7 @@ import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
+import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalForgeServer {
   url: string;
@@ -35,6 +36,7 @@ export function startServer(
   const normalizedRoot = normalizeRoot(root);
   const store = new BoardStore(normalizedRoot);
   store.initProject();
+  store.recoverStaleRuns();
   const clients = new Set<Client>();
   const encoder = new TextEncoder();
   let queueRunning = false;
@@ -121,6 +123,20 @@ export function startServer(
 
         if (url.pathname === "/api/config" && request.method === "GET") {
           return json(readConfig(normalizedRoot));
+        }
+
+        if (url.pathname === "/api/runtime" && request.method === "GET") {
+          const board = store.getBoard();
+          return json({
+            queueRunning,
+            config: readConfig(normalizedRoot),
+            workflow: readWorkflow(normalizedRoot),
+            runningRuns: board.runs.filter((run) => run.status === "running"),
+            dispatchableTasks: board.tasks.filter((task) =>
+              task.status === "ready" || task.status === "inbox"
+            ),
+            needsInputTasks: board.tasks.filter((task) => task.status === "blocked"),
+          });
         }
 
         if (url.pathname === "/api/config" && request.method === "PATCH") {

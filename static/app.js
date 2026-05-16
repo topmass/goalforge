@@ -1,6 +1,7 @@
 const state = {
   board: { goals: [], tasks: [], runs: [], events: [], statuses: [] },
   config: null,
+  runtime: null,
   selectedTaskId: null,
   draggedTaskId: null,
 };
@@ -16,6 +17,7 @@ const modelSelectEl = document.querySelector("#modelSelect");
 const reasoningSelectEl = document.querySelector("#reasoningSelect");
 const fastModeEl = document.querySelector("#fastMode");
 const settingsStatusEl = document.querySelector("#settingsStatus");
+const runtimeStatusEl = document.querySelector("#runtimeStatus");
 
 document.querySelector("#addGoal").addEventListener("click", addGoal);
 document.querySelector("#startGoalforge").addEventListener(
@@ -36,6 +38,7 @@ fastModeEl.addEventListener("change", saveConfig);
 
 connectEvents();
 loadConfig();
+loadRuntime();
 loadBoard();
 
 async function loadBoard() {
@@ -48,6 +51,12 @@ async function loadConfig() {
   const response = await fetch("/api/config");
   state.config = await response.json();
   renderConfig();
+}
+
+async function loadRuntime() {
+  const response = await fetch("/api/runtime");
+  state.runtime = await response.json();
+  renderRuntime();
 }
 
 async function saveConfig() {
@@ -75,6 +84,13 @@ function renderConfig() {
     }`;
 }
 
+function renderRuntime() {
+  if (!state.runtime) return;
+  runtimeStatusEl.textContent = `${
+    state.runtime.queueRunning ? "QUEUE RUNNING" : "QUEUE IDLE"
+  } / ${state.runtime.workflow.maxConcurrentAgents} AGENTS / ${state.runtime.needsInputTasks.length} NEED INPUT`;
+}
+
 function connectEvents() {
   const source = new EventSource("/api/events");
   source.addEventListener("open", () => {
@@ -82,11 +98,13 @@ function connectEvents() {
   });
   source.addEventListener("board", (event) => {
     state.board = JSON.parse(event.data);
+    loadRuntime();
     render();
   });
   source.addEventListener("activity", (event) => {
     const activity = JSON.parse(event.data);
     state.board.events.push(activity);
+    loadRuntime();
     renderCommandCenter();
   });
   source.addEventListener("error", () => {
@@ -99,6 +117,7 @@ async function addGoal() {
   if (!text) return;
   goalTextEl.value = "";
   await postJson("/api/goals", { text });
+  await loadRuntime();
   await loadBoard();
 }
 

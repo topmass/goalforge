@@ -5,11 +5,19 @@ import { worktreesPath } from "../paths.ts";
 export interface WorktreeAssignment {
   branchName: string;
   worktreePath: string;
+  created: boolean;
 }
 
-export async function prepareTaskWorktree(root: string, task: Task): Promise<WorktreeAssignment> {
+export async function prepareTaskWorktree(
+  root: string,
+  task: Task,
+  configuredWorktreesDir = worktreesPath(root),
+): Promise<WorktreeAssignment> {
   const branchName = `goalforge/${task.id.toLowerCase()}`;
-  const worktreePath = path.join(worktreesPath(root), task.id);
+  const worktreeRoot = path.isAbsolute(configuredWorktreesDir)
+    ? configuredWorktreesDir
+    : path.join(root, configuredWorktreesDir);
+  const worktreePath = path.join(worktreeRoot, task.id);
 
   if (!await isGitRepo(root)) {
     throw new Error("GoalForge workers require a git repository. Run goalforge init first.");
@@ -18,8 +26,9 @@ export async function prepareTaskWorktree(root: string, task: Task): Promise<Wor
   try {
     await Deno.stat(path.join(worktreePath, ".git"));
     await ensureWorktreeExcludes(worktreePath);
-    return { branchName, worktreePath };
+    return { branchName, worktreePath, created: false };
   } catch {
+    await Deno.mkdir(worktreeRoot, { recursive: true });
     await runCommand(root, [
       "git",
       "worktree",
@@ -31,7 +40,7 @@ export async function prepareTaskWorktree(root: string, task: Task): Promise<Wor
       "HEAD",
     ]);
     await ensureWorktreeExcludes(worktreePath);
-    return { branchName, worktreePath };
+    return { branchName, worktreePath, created: true };
   }
 }
 

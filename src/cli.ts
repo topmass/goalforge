@@ -1,12 +1,13 @@
 import { BoardStore } from "./board/store.ts";
 import { TASK_STATUS_LABELS } from "./board/types.ts";
-import { normalizeRoot } from "./paths.ts";
+import { normalizeRoot, workflowPath } from "./paths.ts";
 import { startServer } from "./web/server.ts";
 import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
 import { buildProjectMemory } from "./workers/project_memory.ts";
+import { readWorkflow } from "./workflow/workflow.ts";
 
 const root = normalizeRoot(Deno.cwd());
 const [command, ...args] = Deno.args;
@@ -31,6 +32,9 @@ try {
       break;
     case "status":
       statusCommand();
+      break;
+    case "workflow":
+      workflowCommand();
       break;
     case "merge":
       await mergeCommand(args);
@@ -66,12 +70,24 @@ async function initCommand(): Promise<void> {
     store.initProject();
     const actions = await ensureGitRepository(root);
     console.log(`GoalForge initialized at ${root}/.goalforge`);
+    console.log(`Workflow ${workflowPath(root)}`);
     for (const action of actions) {
       console.log(action);
     }
   } finally {
     store.close();
   }
+}
+
+function workflowCommand(): void {
+  const workflow = readWorkflow(root);
+  console.log(`Workflow: ${workflowPath(root)}`);
+  console.log(`Tracker: ${workflow.trackerKind}`);
+  console.log(`Max agents: ${workflow.maxConcurrentAgents}`);
+  console.log(`Max turns: ${workflow.maxTurns}`);
+  console.log(`Max retries: ${workflow.maxRetries}`);
+  console.log(`Retry backoff: ${workflow.retryBackoffMs}ms`);
+  console.log(`Codex: ${workflow.model} ${workflow.reasoningEffort} fast=${workflow.fastMode}`);
 }
 
 async function goalCommand(args: string[]): Promise<void> {

@@ -27,6 +27,34 @@ Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", 
   const streamed: string[] = [];
   try {
     store.initProject();
+    await Deno.writeTextFile(
+      `${root}/WORKFLOW.md`,
+      `---
+version: 1
+tracker:
+  kind: goalforge-local
+agent:
+  max_concurrent_agents: 2
+  max_turns: 1
+  max_retries: 1
+  retry_backoff_ms: 1000
+codex:
+  model: gpt-5.5
+  reasoning_effort: high
+  fast_mode: true
+workspace:
+  worktrees_dir: .goalforge/custom-worktrees
+  hooks:
+    before_run:
+      - printf before > workflow-before.txt
+    after_run:
+      - printf after > workflow-after.txt
+---
+# Custom Workflow
+
+Custom workflow instruction.
+`,
+    );
     const { task } = store.createGoal("Exercise the Codex worker");
     const worker = new GoalForgeWorker(root, store, {
       onEvent: (event) => streamed.push(`${event.kind}:${event.message}`),
@@ -35,7 +63,7 @@ Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", 
     const updated = await worker.runTask(task.id);
     assertEquals(updated.status, "done");
     assert(updated.branchName?.startsWith("goalforge/task-1"));
-    assert(updated.worktreePath?.includes(".goalforge/worktrees/TASK-1"));
+    assert(updated.worktreePath?.includes(".goalforge/custom-worktrees/TASK-1"));
     assertEquals(updated.threadId, "thread-test");
     assertStringIncludes(updated.validation, "Codex App Server turn completed");
     assertStringIncludes(updated.validation, "Commit:");
@@ -47,6 +75,8 @@ Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", 
       await Deno.readTextFile(`${root}/task-1-codex-output.txt`),
       "test Codex implementation output\n",
     );
+    assertEquals(await Deno.readTextFile(`${root}/workflow-before.txt`), "before");
+    assertEquals(await Deno.readTextFile(`${root}/workflow-after.txt`), "after");
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -96,6 +126,52 @@ Deno.test("worker queue processes dispatchable tasks one at a time", async () =>
     assertEquals(completed.length, 2);
     assertEquals(store.getTask("TASK-1").status, "done");
     assertEquals(store.getTask("TASK-2").status, "done");
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("worker retries transient workflow hook failures", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const streamed: string[] = [];
+  try {
+    store.initProject();
+    await Deno.writeTextFile(
+      `${root}/WORKFLOW.md`,
+      `---
+version: 1
+tracker:
+  kind: goalforge-local
+agent:
+  max_concurrent_agents: 1
+  max_turns: 1
+  max_retries: 2
+  retry_backoff_ms: 1
+codex:
+  model: gpt-5.5
+  reasoning_effort: high
+  fast_mode: true
+workspace:
+  worktrees_dir: .goalforge/worktrees
+  hooks:
+    before_run:
+      - test -f retry-once || (touch retry-once && exit 1)
+---
+# Retry Workflow
+`,
+    );
+    const { task } = store.createGoal("Retry transient hook failure");
+    const worker = new GoalForgeWorker(root, store, {
+      onEvent: (event) => streamed.push(`${event.kind}:${event.message}`),
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+    });
+    const updated = await worker.runTask(task.id);
+    assertEquals(updated.status, "done");
+    assert(streamed.some((line) => line.includes("Retrying TASK-1 after failure")));
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -231,6 +307,7 @@ class TestCodexClient implements CodexClient {
 
     assertStringIncludes(_input.prompt, "Current GoalForge board memory");
     assertStringIncludes(_input.prompt, "Codex-native subagents");
+    assertStringIncludes(_input.prompt, "Repo WORKFLOW.md instructions");
     const taskId = _input.title.split(":")[0].toLowerCase();
     await Deno.writeTextFile(
       `${session.cwd}/${taskId}-codex-output.txt`,
