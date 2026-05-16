@@ -235,7 +235,7 @@ function taskCard(task) {
   const canDelete = task.status !== "done";
   const canStart = ["inbox", "ready", "blocked"].includes(task.status);
   const canReview = task.status === "review";
-  const canMerge = task.status === "review" || task.status === "done";
+  const canMerge = task.status === "review";
   card.innerHTML = `
     <div class="task-id">
       <span>${escapeHtml(task.id)}</span>
