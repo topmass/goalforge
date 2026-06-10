@@ -555,7 +555,7 @@ export class GoalForgeWorker {
                 this.store.requestTransition(
                   task.id,
                   "ready",
-                  "main-agent",
+                  "core",
                   "Main agent triage queued corrected instructions and requested a retry.",
                 ).event,
               );
@@ -795,7 +795,7 @@ export class GoalForgeWorker {
         this.store.requestTransition(
           task.id,
           "in_progress",
-          "publisher",
+          "core",
           "GoalForge harness claimed this ops task.",
         ).event,
       );
@@ -804,7 +804,7 @@ export class GoalForgeWorker {
       return task;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.emit(this.store.appendEvent(task.id, run.id, "publisher", "error", message));
+      this.emit(this.store.appendEvent(task.id, run.id, "core", "error", message));
       return this.blockOpsTask(
         task.id,
         run.id,
@@ -833,7 +833,7 @@ export class GoalForgeWorker {
       interruptible: false,
     });
     try {
-      this.emit(this.store.requestTransition(taskId, "blocked", "publisher", prompt).event);
+      this.emit(this.store.requestTransition(taskId, "blocked", "core", prompt).event);
     } catch {
       // Keep the blocked loop state even if the task already moved.
     }
@@ -863,7 +863,7 @@ export class GoalForgeWorker {
       this.store.appendEvent(
         task.id,
         runId,
-        "publisher",
+        "core",
         "publish",
         result.committed
           ? `Committed ${result.commit} and pushed ${result.branch} to ${result.remote}.`
@@ -888,7 +888,7 @@ export class GoalForgeWorker {
         this.store.requestTransition(
           task.id,
           "review",
-          "publisher",
+          "core",
           "Publish completed with recorded evidence.",
         ).event,
       );
@@ -897,7 +897,7 @@ export class GoalForgeWorker {
       this.store.requestTransition(
         task.id,
         "done",
-        "publisher",
+        "core",
         `Published ${result.branch} to ${result.remote}; remote matches the local head.`,
       ).event,
     );
@@ -936,7 +936,7 @@ export class GoalForgeWorker {
     | { outcome: "escalate"; prompt: string }
   > {
     const escalate = (reason: string, prompt: string) => {
-      this.emit(this.store.appendEvent(input.taskId, input.runId, "main-agent", "triage", reason));
+      this.emit(this.store.appendEvent(input.taskId, input.runId, "core", "triage", reason));
       return { outcome: "escalate" as const, prompt };
     };
     const task = this.store.getTask(input.taskId);
@@ -980,7 +980,7 @@ export class GoalForgeWorker {
       this.store.appendEvent(
         task.id,
         input.runId,
-        "main-agent",
+        "core",
         "triage",
         "Main agent is triaging the worker blocker before asking the user.",
       ),
@@ -1026,7 +1026,7 @@ export class GoalForgeWorker {
         this.store.appendEvent(
           task.id,
           input.runId,
-          "main-agent",
+          "core",
           "triage",
           "Main agent resolved the blocker with the harness publish action.",
         ),
@@ -1046,12 +1046,12 @@ export class GoalForgeWorker {
       }
     }
     if (decision.verdict === "retry") {
-      this.store.enqueueMessage(task.id, "main-agent", decision.message);
+      this.store.enqueueMessage(task.id, "core", decision.message);
       this.emit(
         this.store.appendEvent(
           task.id,
           input.runId,
-          "main-agent",
+          "core",
           "triage",
           `Main agent queued corrected instructions and requested one retry (${
             task.triageAttempts + 1

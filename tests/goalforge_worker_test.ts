@@ -796,7 +796,7 @@ Deno.test("main agent triage retries a worker with corrected instructions", asyn
     const board = store.getBoard();
     assert(
       board.messages.some((message) =>
-        message.role === "main-agent" &&
+        message.role === "core" &&
         message.message.includes("deno task test") &&
         message.processed
       ),

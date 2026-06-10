@@ -184,6 +184,7 @@ function friendlyRole(role: string): string {
     reviewer: "Reviewer",
     steerer: "Input",
     supervisor: "Supervisor",
+    core: "Core",
     "main-thread": "Project Memory",
     goal: "Goal",
   };
