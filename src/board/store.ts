@@ -25,6 +25,9 @@ import {
   ExternalAgentState,
   ExternalAgentStatus,
   Goal,
+  GoalProbe,
+  GoalProbeDraft,
+  Lesson,
   OPS_ACTIONS,
   OpsAction,
   ProjectState,
@@ -101,7 +104,7 @@ export class BoardStore {
   createGoalWithTasks(
     text: string,
     drafts: TaskDraft[],
-    options: { completionContract?: string } = {},
+    options: { completionContract?: string; probes?: GoalProbeDraft[] } = {},
   ): { goal: Goal; tasks: Task[] } {
     const trimmed = text.trim();
     if (!trimmed) {
@@ -167,6 +170,9 @@ export class BoardStore {
       tasks.push(this.getTask(taskId));
     }
 
+    if (options.probes?.length) {
+      this.addProbes(goalId, options.probes);
+    }
     const goal = this.getGoal(goalId);
     this.appendEvent(
       tasks[0]?.id ?? null,
@@ -253,6 +259,8 @@ export class BoardStore {
       runs: this.listRuns(),
       agentStatuses: this.listAgentStatuses(),
       externalAgents: this.listExternalAgents(),
+      probes: this.listProbes(),
+      lessons: this.listLessons(20),
       messages: this.listMessages(),
       events: this.listEvents(250),
       statuses: TASK_STATUSES.map((id) => ({ id, label: TASK_STATUS_LABELS[id] })),
@@ -610,6 +618,69 @@ export class BoardStore {
       next.interruptible ? 1 : 0,
     );
     return this.getAgentStatus(status.runId) ?? next;
+  }
+
+  addProbes(goalId: string, drafts: GoalProbeDraft[]): GoalProbe[] {
+    this.getGoal(goalId);
+    for (const draft of drafts) {
+      if (!draft.label.trim() || !draft.command.trim()) {
+        continue;
+      }
+      this.db.prepare(
+        "INSERT INTO goal_probes (goal_id, label, command, expect_contains, timeout_ms) VALUES (?, ?, ?, ?, ?)",
+      ).run(
+        goalId,
+        draft.label.trim(),
+        draft.command.trim(),
+        draft.expectContains?.trim() || null,
+        Number.isInteger(draft.timeoutMs) && draft.timeoutMs! > 0 ? draft.timeoutMs! : 60000,
+      );
+    }
+    return this.listProbes(goalId);
+  }
+
+  listProbes(goalId?: string): GoalProbe[] {
+    const rows = goalId
+      ? this.db.prepare("SELECT * FROM goal_probes WHERE goal_id = ? ORDER BY id ASC").all(goalId)
+      : this.db.prepare("SELECT * FROM goal_probes ORDER BY id ASC").all();
+    return (rows as SqlRow[]).map(probeFromRow);
+  }
+
+  recordProbeResult(probeId: number, status: "passed" | "failed", output: string): void {
+    this.db.prepare(
+      "UPDATE goal_probes SET last_status = ?, last_output = ?, last_run_at = ? WHERE id = ?",
+    ).run(status, limitText(output, 4000), timestamp(), probeId);
+  }
+
+  addLesson(text: string, source = ""): Lesson {
+    const trimmed = text.replace(/\s+/g, " ").trim().slice(0, 400);
+    if (!trimmed) {
+      throw new Error("Lesson text is required.");
+    }
+    const existing = this.db.prepare("SELECT id FROM lessons WHERE text = ?").get(trimmed) as
+      | SqlRow
+      | undefined;
+    if (!existing) {
+      this.db.prepare("INSERT INTO lessons (text, source, created_at) VALUES (?, ?, ?)").run(
+        trimmed,
+        source,
+        timestamp(),
+      );
+    }
+    return this.listLessons(1)[0];
+  }
+
+  listLessons(limit = 20): Lesson[] {
+    return (this.db.prepare("SELECT * FROM lessons ORDER BY id DESC LIMIT ?").all(
+      limit,
+    ) as SqlRow[])
+      .map((row) => ({
+        id: Number(row.id),
+        text: String(row.text),
+        source: String(row.source ?? ""),
+        createdAt: String(row.created_at),
+      }))
+      .reverse();
   }
 
   recordTriageAttempt(taskId: string, fingerprint: string): Task {
@@ -1208,6 +1279,25 @@ export class BoardStore {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS goal_probes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        goal_id TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        command TEXT NOT NULL,
+        expect_contains TEXT,
+        timeout_ms INTEGER NOT NULL DEFAULT 60000,
+        last_status TEXT NOT NULL DEFAULT 'pending',
+        last_output TEXT NOT NULL DEFAULT '',
+        last_run_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS lessons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS external_agents (
         id TEXT PRIMARY KEY,
         agent TEXT NOT NULL,
@@ -1711,6 +1801,21 @@ function messageFromRow(row: SqlRow): QueuedMessage {
     message: String(row.message),
     processed: Boolean(row.processed),
     createdAt: String(row.created_at),
+  };
+}
+
+function probeFromRow(row: SqlRow): GoalProbe {
+  const status = String(row.last_status ?? "pending");
+  return {
+    id: Number(row.id),
+    goalId: String(row.goal_id),
+    label: String(row.label),
+    command: String(row.command),
+    expectContains: nullableString(row.expect_contains),
+    timeoutMs: Number(row.timeout_ms ?? 60000),
+    lastStatus: status === "passed" || status === "failed" ? status : "pending",
+    lastOutput: String(row.last_output ?? ""),
+    lastRunAt: nullableString(row.last_run_at),
   };
 }
 

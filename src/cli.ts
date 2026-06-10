@@ -7,6 +7,8 @@ import { startServer } from "./web/server.ts";
 import { runCommandCenterTui } from "./tui/command_center.ts";
 import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
+import { GoalPursuer } from "./workers/goal_pursuer.ts";
+import { formatProbeLines, probeLights, runGoalProbes } from "./workers/goal_probes.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
 import { buildProjectMemory } from "./workers/project_memory.ts";
@@ -110,6 +112,18 @@ try {
     case "hooks":
       await hooksCommand(args);
       break;
+    case "check":
+      await checkCommand(args);
+      break;
+    case "pursue":
+      await pursueCommand(args);
+      break;
+    case "lesson":
+      lessonCommand(args);
+      break;
+    case "standup":
+      standupCommand();
+      break;
     case undefined:
     case "-h":
     case "--help":
@@ -173,6 +187,7 @@ async function goalCommand(args: string[]): Promise<void> {
     const plan = await planner.planGoal(text);
     const { goal, tasks } = store.createGoalWithTasks(text, plan.tasks, {
       completionContract: plan.completionContract,
+      probes: plan.probes,
     });
     console.log(`${goal.id} compiled.`);
     for (const task of tasks) {
@@ -208,6 +223,7 @@ async function buildCommand(args: string[]): Promise<void> {
     const plan = await planner.planGoal(text);
     const { goal, tasks } = store.createGoalWithTasks(text, plan.tasks, {
       completionContract: plan.completionContract,
+      probes: plan.probes,
     });
     console.log(
       `${goal.id} compiled. Running ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
@@ -384,6 +400,142 @@ async function hooksCommand(args: string[]): Promise<void> {
   if (target === "codex") {
     console.log("Codex CLI loads hooks when [features] hooks = true in ~/.codex/config.toml.");
   }
+}
+
+async function checkCommand(args: string[]): Promise<void> {
+  const store = new BoardStore(root);
+  try {
+    const goalId = args[0]?.trim() ||
+      summarizeGoalProgress(store.getBoard())?.goal.id;
+    if (!goalId) {
+      throw new Error("No open goal to check. Pass a GOAL-ID.");
+    }
+    const summary = await runGoalProbes(root, store, goalId);
+    if (!summary.total) {
+      console.log(`${goalId} has no win-condition probes recorded.`);
+      return;
+    }
+    for (const line of formatProbeLines(store.listProbes(goalId))) {
+      console.log(line);
+    }
+    console.log(
+      `${goalId} win conditions: ${summary.passed}/${summary.total} ${
+        probeLights(store.listProbes(goalId))
+      }`,
+    );
+  } finally {
+    store.close();
+  }
+}
+
+async function pursueCommand(args: string[]): Promise<void> {
+  const hoursIndex = args.indexOf("--hours");
+  const hours = hoursIndex >= 0 ? Number(args[hoursIndex + 1]) : 2;
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error("A valid --hours value is required.");
+  }
+  const iterIndex = args.indexOf("--iterations");
+  const maxIterations = iterIndex >= 0 ? Number(args[iterIndex + 1]) : 24;
+  const escalateIndex = args.indexOf("--escalate");
+  const escalateBackend = escalateIndex >= 0 ? args[escalateIndex + 1] : undefined;
+  const all = args.includes("--all");
+  const goalId = args.find((arg, index) =>
+    !arg.startsWith("-") &&
+    index !== hoursIndex + 1 && index !== iterIndex + 1 && index !== escalateIndex + 1
+  );
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    await ensureGitRepository(root);
+    const pursuer = new GoalPursuer(root, store, {
+      hours,
+      maxIterations: Number.isInteger(maxIterations) && maxIterations > 0 ? maxIterations : 24,
+      escalateBackend,
+      onEvent: (event) => {
+        const task = event.taskId ?? "system";
+        console.log(`[${event.role}:${task}] ${event.kind} ${event.message}`);
+      },
+    });
+    const reports = all || !goalId ? await pursuer.pursueAll() : [await pursuer.pursue(goalId)];
+    for (const report of reports) {
+      console.log(
+        `${report.goalId}: ${
+          report.closed ? "CLOSED" : "stopped"
+        } after ${report.iterations} iteration${
+          report.iterations === 1 ? "" : "s"
+        }. ${report.reason}`,
+      );
+      for (const ask of report.asks) {
+        console.log(`  needs you: ${ask}`);
+      }
+    }
+  } finally {
+    store.close();
+  }
+}
+
+function lessonCommand(args: string[]): void {
+  const text = args.join(" ").trim();
+  usingStore((store) => {
+    if (!text) {
+      for (const lesson of store.listLessons(30)) {
+        console.log(`- ${lesson.text}${lesson.source ? ` (${lesson.source})` : ""}`);
+      }
+      return;
+    }
+    store.addLesson(text, "user");
+    console.log("Lesson recorded.");
+  });
+}
+
+function standupCommand(): void {
+  usingStore((store) => {
+    const board = store.getBoard();
+    console.log("GoalForge standup");
+    console.log("");
+    const closed = board.goals.filter((goal) => goal.status === "closed").slice(-5);
+    console.log("Recently shipped:");
+    if (closed.length) {
+      for (const goal of closed) {
+        console.log(`- ${goal.id} ${goal.closedAt ?? ""}: ${goal.text.slice(0, 90)}`);
+      }
+    } else {
+      console.log("- nothing closed yet");
+    }
+    console.log("");
+    console.log("Needs you:");
+    const blocked = board.tasks.filter((task) => task.status === "blocked");
+    if (blocked.length) {
+      for (const task of blocked) {
+        console.log(
+          `- ${task.id}: ${
+            (task.needsInputPrompt ?? task.blockedReason ?? "needs input").slice(0, 110)
+          }`,
+        );
+      }
+    } else {
+      console.log("- nothing");
+    }
+    console.log("");
+    console.log("Win conditions:");
+    const open = board.goals.filter((goal) => goal.status === "open");
+    let printed = false;
+    for (const goal of open) {
+      const probes = board.probes.filter((probe) => probe.goalId === goal.id);
+      if (probes.length) {
+        printed = true;
+        const passed = probes.filter((probe) => probe.lastStatus === "passed").length;
+        console.log(`- ${goal.id} ${passed}/${probes.length} ${probeLights(probes)}`);
+      }
+    }
+    if (!printed) {
+      console.log("- no probes recorded");
+    }
+    console.log("");
+    for (const line of formatHealthLines(board).slice(-1)) {
+      console.log(line);
+    }
+  });
 }
 
 function applyDirFlag(rawArgs: string[]): { root: string; args: string[] } {
@@ -948,6 +1100,10 @@ Usage:
   goalforge doctor
   goalforge status
   goalforge hooks [print | install claude | install codex]
+  goalforge check [GOAL-ID]
+  goalforge pursue [GOAL-ID | --all] [--hours N] [--iterations N] [--escalate codex]
+  goalforge lesson ["text to remember"]
+  goalforge standup
 
 Target directory (any command):
   -C, --dir <path>            Run GoalForge in that project folder instead of the

@@ -108,6 +108,8 @@ interface BoardSnapshot {
   runs: Array<{ id: string; taskId: string; status: "running" | "completed" | "failed" }>;
   agentStatuses: AgentStatus[];
   externalAgents: ExternalAgentStatus[];
+  probes: Array<{ goalId: string; label: string; lastStatus: string }>;
+  lessons: Array<{ text: string }>;
   messages: QueuedMessage[];
   events: ActivityEvent[];
   statuses: Array<{ id: TaskStatus; label: string }>;
@@ -909,6 +911,10 @@ function handleServerEvent(type: string, data: string): void {
     render();
   } else if (type === "activity") {
     const event = payload as ActivityEvent;
+    if (event.kind === "close" && flowField) {
+      flowField.celebrate();
+      return;
+    }
     const target = pulseTargetForEvent(flowScene, event);
     if (target && flowField) {
       flowField.pulse(target);
@@ -1460,6 +1466,7 @@ function mainThreadLines(): string[] {
         ...wrap(goal.goal.text, 44).slice(0, 3),
         ...wrap(`Contract: ${goal.goal.completionContract}`, 44).slice(0, 3),
         `Verdict: ${goal.completionVerdict}`,
+        ...winConditionLines(goal.goal.id),
         `Evidence gaps: ${goal.evidenceGaps.length}`,
         ...goal.evidenceGaps.slice(0, 2).flatMap((gap) => wrap(`- ${gap}`, 44).slice(0, 2)),
         `Next: ${short(goal.nextAction, 38)}`,
@@ -1479,6 +1486,18 @@ function mainThreadLines(): string[] {
       2,
     ),
   ];
+}
+
+function winConditionLines(goalId: string): string[] {
+  const probes = (state.board.probes ?? []).filter((probe) => probe.goalId === goalId);
+  if (!probes.length) {
+    return [];
+  }
+  const passed = probes.filter((probe) => probe.lastStatus === "passed").length;
+  const lights = probes
+    .map((probe) => probe.lastStatus === "passed" ? "●" : probe.lastStatus === "failed" ? "○" : "◌")
+    .join("");
+  return [`Win: ${passed}/${probes.length} ${lights}`];
 }
 
 function statusHeadline(): string {

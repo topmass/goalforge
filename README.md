@@ -47,7 +47,26 @@ goalforge goal "refactor the auth flow"    # plan only; review tasks before runn
 goalforge run --all                        # run everything that is ready
 goalforge status                           # board, goals, and evidence at a glance
 goalforge health                           # readiness and the next recommended action
+goalforge check                            # run the goal's win-condition probes
+goalforge standup                          # digest: shipped, blocked asks, win conditions
 ```
+
+## Let it run overnight
+
+Goals get **win conditions**: executable probes the planner writes alongside the tasks (curl checks,
+test commands, file checks). A goal can only close when every probe passes, and `pursue` keeps
+working a goal until they do:
+
+```bash
+goalforge pursue GOAL-1 --hours 8          # run, probe, replan from failures, repeat
+goalforge pursue --all --hours 8           # work the whole backlog while you sleep
+goalforge pursue GOAL-1 --escalate codex   # local model grinds; stuck passes escalate
+```
+
+Repair attempts rotate strategy (minimal fix, then diagnose-first, then rewrite), the same failure
+twice triggers escalation or a clean stop with one clear ask, and lessons learned from failures feed
+every future prompt. In the morning, `goalforge standup` tells you what shipped with proof and
+exactly what needs you.
 
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
 and Reply both answers a blocked agent and restarts it.

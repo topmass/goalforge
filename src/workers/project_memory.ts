@@ -66,6 +66,29 @@ export function buildMemoryFromBoard(board: BoardSnapshot): string {
         ? goalProgress.evidenceGaps.slice(0, 4).map((gap) => `- Gap: ${oneLine(gap, 220)}`)
         : []),
       "",
+      ...(board.probes?.length
+        ? [
+          "",
+          "Win-condition probes:",
+          ...board.probes.slice(0, 12).map((probe) =>
+            `- [${probe.lastStatus}] ${probe.goalId} ${probe.label}: ${
+              oneLine(probe.command, 160)
+            }${
+              probe.lastStatus === "failed"
+                ? ` | last output: ${oneLine(probe.lastOutput, 200)}`
+                : ""
+            }`
+          ),
+        ]
+        : []),
+      ...(board.lessons?.length
+        ? [
+          "",
+          "Project lessons (apply these; they came from real failures here):",
+          ...board.lessons.slice(-12).map((lesson) => `- ${oneLine(lesson.text, 240)}`),
+        ]
+        : []),
+      "",
       "Recently closed goals:",
       ...(closedGoals.length
         ? closedGoals.map((goal) =>

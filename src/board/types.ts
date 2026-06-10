@@ -149,6 +149,34 @@ export interface AgentStatus {
   interruptible: boolean;
 }
 
+export type GoalProbeStatus = "pending" | "passed" | "failed";
+
+export interface GoalProbe {
+  id: number;
+  goalId: string;
+  label: string;
+  command: string;
+  expectContains: string | null;
+  timeoutMs: number;
+  lastStatus: GoalProbeStatus;
+  lastOutput: string;
+  lastRunAt: string | null;
+}
+
+export interface GoalProbeDraft {
+  label: string;
+  command: string;
+  expectContains?: string;
+  timeoutMs?: number;
+}
+
+export interface Lesson {
+  id: number;
+  text: string;
+  source: string;
+  createdAt: string;
+}
+
 export const EXTERNAL_AGENT_STATES = ["working", "blocked", "done", "idle"] as const;
 
 export type ExternalAgentState = typeof EXTERNAL_AGENT_STATES[number];
@@ -201,6 +229,8 @@ export interface BoardSnapshot {
   runs: Run[];
   agentStatuses: AgentStatus[];
   externalAgents: ExternalAgentStatus[];
+  probes: GoalProbe[];
+  lessons: Lesson[];
   messages: QueuedMessage[];
   events: ActivityEvent[];
   statuses: { id: TaskStatus; label: string }[];

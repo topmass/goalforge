@@ -1,4 +1,4 @@
-import { ActivityEventInput, TaskDraft } from "../board/types.ts";
+import { ActivityEventInput, GoalProbeDraft, TaskDraft } from "../board/types.ts";
 import { CodexClient } from "./codex_app_server.ts";
 import { createAgentClient } from "./agent_backend.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
@@ -16,6 +16,7 @@ export interface GoalPlannerOptions {
 export interface GoalPlan {
   tasks: TaskDraft[];
   completionContract: string;
+  probes: GoalProbeDraft[];
 }
 
 export class GoalPlanner {
@@ -96,6 +97,7 @@ export function parsePlannerPlanResponse(responseText: string): GoalPlan {
     record?.completionContract,
     "- Complete every planned task.\n- Validate, review, commit, and record handoff evidence before closing the goal.",
   );
+  const probes = parseProbeDrafts(record?.probes);
 
   const tasks = rawTasks.slice(0, 12).map((item, index) => {
     if (!item || typeof item !== "object") {
@@ -135,7 +137,34 @@ export function parsePlannerPlanResponse(responseText: string): GoalPlan {
   if (!tasks.length) {
     throw new Error("Planner returned no tasks.");
   }
-  return { tasks, completionContract };
+  return { tasks, completionContract, probes };
+}
+
+function parseProbeDrafts(value: unknown): GoalProbeDraft[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.slice(0, 8).flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const record = item as Record<string, unknown>;
+    const label = stringField(record.label, "").slice(0, 120);
+    const command = stringField(record.command, "");
+    if (!label || !command) {
+      return [];
+    }
+    return [{
+      label,
+      command,
+      expectContains: typeof record.expectContains === "string" && record.expectContains.trim()
+        ? record.expectContains.trim()
+        : undefined,
+      timeoutMs: typeof record.timeoutMs === "number" && record.timeoutMs > 0
+        ? Math.min(Math.round(record.timeoutMs), 300000)
+        : undefined,
+    }];
+  });
 }
 
 function buildPlannerPrompt(
@@ -150,7 +179,12 @@ function buildPlannerPrompt(
 
 Rules:
 - Output only valid JSON. Do not wrap it in markdown.
-- Return one JSON object with completionContract and tasks.
+- Return one JSON object with completionContract, probes, and tasks.
+- probes is a JSON array of 1 to 6 executable win conditions: objects with label,
+  command, and optional expectContains. Each command is a shell one-liner run from the
+  repository root that exits 0 when the win condition holds (it may start and stop a
+  process it needs). Prefer cheap, deterministic checks: test commands, curl checks with
+  expected output, file/grep checks. The goal can only close when every probe passes.
 - completionContract is a compact markdown checklist that defines what must be true before the overall goal can be closed.
 - tasks is a JSON array of 1 to 12 task objects.
 - Each task object must include title, prompt, acceptanceCriteria, priority, workpad, dependsOn, riskLevel, and verificationPlan.

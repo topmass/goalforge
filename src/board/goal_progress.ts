@@ -20,6 +20,8 @@ export interface GoalProgress {
   completionReady: boolean;
   completionReason: string;
   nextAction: string;
+  probesTotal: number;
+  probesPassed: number;
 }
 
 export interface ClosedGoalSummary {
@@ -57,7 +59,18 @@ export function summarizeGoalProgress(
     tasks.filter((task) =>
       task.status === "done" && !task.handoffSummary.trim() && !task.taskCard.trim()
     ).length;
-  const contractGaps = goalContractGaps(goal, tasks);
+  const probes = (board.probes ?? []).filter((probe) => probe.goalId === goal.id);
+  const probeGaps = tasks.length && tasks.every((task) => task.status === "done")
+    ? probes
+      .filter((probe) => probe.lastStatus !== "passed")
+      .map((probe) =>
+        probe.lastStatus === "failed"
+          ? `Win condition failing: ${probe.label}.`
+          : `Win condition not yet checked: ${probe.label}. Run goalforge check.`
+      )
+    : [];
+  // Executable probes supersede prose contract token-matching when present.
+  const contractGaps = probes.length ? probeGaps : goalContractGaps(goal, tasks);
   const evidenceGaps = [...goalEvidenceGaps(tasks), ...contractGaps];
   const status = goalStatus({
     total,
@@ -102,6 +115,8 @@ export function summarizeGoalProgress(
     completionReady: completion.ready,
     completionReason: completion.reason,
     nextAction: nextTask?.nextAction || "No next action recorded.",
+    probesTotal: probes.length,
+    probesPassed: probes.filter((probe) => probe.lastStatus === "passed").length,
   };
 }
 

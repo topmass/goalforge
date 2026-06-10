@@ -472,6 +472,7 @@ export class GoalForgeWorker {
             projectMemory,
             queuedMessages,
             repairEvidence,
+            repairStrategy(loopTurn),
           ),
         });
         this.store.updateTaskActiveTurn(task.id, null);
@@ -521,6 +522,16 @@ export class GoalForgeWorker {
         const verification = parseVerificationResponse(capturedAgentText);
         verificationNotes = verification.notes;
         if (verification.verdict === "passed") {
+          if (repairEvidence) {
+            try {
+              this.store.addLesson(
+                `${task.id} needed a repair turn; first failure: ${shortName(repairEvidence, 200)}`,
+                "repair",
+              );
+            } catch {
+              // Lessons are best effort.
+            }
+          }
           break;
         }
         if (verification.verdict === "needs_input" || loopTurn >= maxTurns) {
@@ -1049,6 +1060,11 @@ export class GoalForgeWorker {
     }
     if (decision.verdict === "retry") {
       this.store.enqueueMessage(task.id, "core", decision.message);
+      try {
+        this.store.addLesson(shortName(decision.message, 240), "triage");
+      } catch {
+        // Lessons are best effort.
+      }
       this.emit(
         this.store.appendEvent(
           task.id,
@@ -1691,6 +1707,7 @@ function buildWorkerPrompt(
   projectMemory: string,
   queuedMessages: QueuedMessage[],
   repairEvidence = "",
+  strategy = "",
 ): string {
   const instructions = [
     ["constitution.md", PROMPTS["constitution.md"]],
@@ -1721,6 +1738,7 @@ Queued messages for this task:
 ${formatQueuedMessages(queuedMessages)}
 
 ${repairEvidence ? `Repair evidence from failed verification:\n${repairEvidence}\n` : ""}
+${strategy ? `Repair strategy for this attempt (follow it):\n${strategy}\n` : ""}
 
 Task:
 - ID: ${task.id}
@@ -1756,6 +1774,26 @@ Rules:
 - Do not wait for user input. If blocked, explain the blocker clearly in your final response.
 - End with a compact GoalForge handoff containing changed files, validation commands/results, decisions, risks, and follow-ups.
 `;
+}
+
+// Each repair attempt changes strategy instead of repeating the last one.
+function repairStrategy(loopTurn: number): string {
+  if (loopTurn <= 1) {
+    return "";
+  }
+  if (loopTurn === 2) {
+    return "- Make the smallest possible fix for the exact failure in the repair evidence. Do not refactor.";
+  }
+  if (loopTurn === 3) {
+    return [
+      "- Stop patching. Reproduce the failure first with the exact failing command.",
+      "- Add temporary diagnostic output if needed, find the root cause, then fix it and remove the diagnostics.",
+    ].join("\n");
+  }
+  return [
+    "- Patching has failed repeatedly. Rewrite the failing function or file from scratch with the simplest approach that satisfies the acceptance criteria.",
+    "- Re-run the exact failing command before handing off.",
+  ].join("\n");
 }
 
 function buildMainThreadSeedPrompt(root: string): string {

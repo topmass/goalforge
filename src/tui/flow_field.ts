@@ -189,6 +189,25 @@ export class FlowField {
     }
   }
 
+  celebrate(): void {
+    this.core.pulse = Math.min(2.2, this.core.pulse + 1.6);
+    for (let i = 0; i < 36 && this.particles.length < MAX_PARTICLES; i++) {
+      const particle = this.makeAmbient();
+      particle.mode = "scatter";
+      particle.x = this.core.x;
+      particle.y = this.core.y;
+      const direction = (i / 36) * Math.PI * 2;
+      const speed = 14 + this.rng() * 18;
+      particle.vx = Math.cos(direction) * speed;
+      particle.vy = Math.sin(direction) * speed * 0.6;
+      particle.ttl = 1.2 + this.rng() * 0.8;
+      particle.r = CORE_COLOR[0];
+      particle.g = CORE_COLOR[1];
+      particle.b = CORE_COLOR[2];
+      this.particles.push(particle);
+    }
+  }
+
   pulse(clusterId: string): void {
     const anchor = this.anchorStates.get(clusterId);
     if (anchor) {
@@ -232,6 +251,7 @@ export class FlowField {
     for (const anchor of this.anchorStates.values()) {
       anchor.pulse = Math.max(0, anchor.pulse - dt * 1.4);
     }
+    this.core.pulse = Math.max(0, this.core.pulse - dt * 1.4);
   }
 
   render(emit: FlowCellEmit): void {

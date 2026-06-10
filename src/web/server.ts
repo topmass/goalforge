@@ -11,6 +11,8 @@ import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
+import { GoalPursuer } from "../workers/goal_pursuer.ts";
+import { runGoalProbes } from "../workers/goal_probes.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
@@ -47,6 +49,7 @@ export function startServer(
   const clients = new Set<Client>();
   const encoder = new TextEncoder();
   let queueRunning = false;
+  let pursueRunning = false;
 
   const send = (client: Client, type: string, payload: unknown) => {
     try {
@@ -283,6 +286,7 @@ export function startServer(
           const plan = await planner.planGoal(text);
           const result = store.createGoalWithTasks(text, plan.tasks, {
             completionContract: plan.completionContract,
+            probes: plan.probes,
           });
           broadcastBoard();
           return json(result, 201);
@@ -305,10 +309,63 @@ export function startServer(
           const plan = await planner.planGoal(text);
           const result = store.createGoalWithTasks(text, plan.tasks, {
             completionContract: plan.completionContract,
+            probes: plan.probes,
           });
           broadcastBoard();
           startQueue();
           return json({ ...result, running: queueRunning }, 201);
+        }
+
+        const checkMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/check$/);
+        if (checkMatch && request.method === "POST") {
+          const goalId = decodeURIComponent(checkMatch[1]);
+          const summary = await runGoalProbes(normalizedRoot, store, goalId);
+          broadcastBoard();
+          return json({
+            goalId,
+            total: summary.total,
+            passed: summary.passed,
+            probes: store.listProbes(goalId),
+          });
+        }
+
+        const pursueMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/pursue$/);
+        if (pursueMatch && request.method === "POST") {
+          const goalId = decodeURIComponent(pursueMatch[1]);
+          const body = await readJson<{ hours?: number; escalate?: string }>(request);
+          if (pursueRunning) {
+            return json({ error: "A pursue loop is already running." }, 409);
+          }
+          pursueRunning = true;
+          queueMicrotask(() => {
+            const pursuer = new GoalPursuer(normalizedRoot, store, {
+              hours: typeof body.hours === "number" && body.hours > 0 ? body.hours : 2,
+              escalateBackend: typeof body.escalate === "string" && body.escalate.trim()
+                ? body.escalate.trim()
+                : undefined,
+              onEvent: broadcastActivity,
+              createCodexClient: options.createCodexClient,
+            });
+            pursuer.pursue(goalId).then((report) => {
+              pursueRunning = false;
+              broadcastActivity(
+                store.appendEvent(
+                  null,
+                  null,
+                  "pursuer",
+                  "report",
+                  `${report.goalId} ${
+                    report.closed ? "closed" : "stopped"
+                  } after ${report.iterations} iterations: ${report.reason}`,
+                ),
+              );
+            }).catch((error) => {
+              pursueRunning = false;
+              const message = error instanceof Error ? error.message : String(error);
+              broadcast("error", { message });
+            });
+          });
+          return json({ ok: true, goalId, running: true });
         }
 
         const closeGoalMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/close$/);
@@ -359,6 +416,7 @@ export function startServer(
           const plan = await planner.planGoal(text);
           const result = store.createGoalWithTasks(text, plan.tasks, {
             completionContract: plan.completionContract,
+            probes: plan.probes,
           });
           broadcastBoard();
           return json(result, 201);
