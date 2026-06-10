@@ -16,7 +16,7 @@ import { decodeControlKey, decodePromptInput, normalizePromptText } from "./inpu
 import { parseResetMemoryConfirmation } from "./memory_controls.ts";
 import { blockedExplanation, taskRecommendation } from "./task_recommendation.ts";
 
-type TaskStatus = "inbox" | "ready" | "in_progress" | "review" | "blocked" | "done";
+type TaskStatus = "inbox" | "ready" | "in_progress" | "review" | "merging" | "blocked" | "done";
 
 interface Task {
   id: string;
@@ -179,6 +179,7 @@ const statusLabel: Record<TaskStatus, string> = {
   ready: "Ready",
   in_progress: "Working",
   review: "Needs Check",
+  merging: "Merging",
   blocked: "Needs Input",
   done: "Done",
 };
@@ -1021,7 +1022,7 @@ function selectedTaskFooterAction(): FooterAction | null {
         ),
     };
   }
-  if (task.status === "done") {
+  if (task.status === "done" || task.status === "merging") {
     return null;
   }
   return {
@@ -1621,7 +1622,7 @@ function orderedTasks(): Task[] {
 function orderedActiveTasks(): Task[] {
   return state.board.tasks.filter((task) =>
     task.status === "inbox" || task.status === "ready" || task.status === "in_progress" ||
-    task.status === "review"
+    task.status === "review" || task.status === "merging"
   );
 }
 

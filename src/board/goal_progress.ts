@@ -39,7 +39,8 @@ export function summarizeGoalProgress(
   }
   const tasks = board.tasks.filter((task) => task.goalId === goal.id);
   const ready = tasks.filter((task) => task.status === "ready" || task.status === "inbox").length;
-  const working = tasks.filter((task) => task.status === "in_progress").length;
+  const working =
+    tasks.filter((task) => task.status === "in_progress" || task.status === "merging").length;
   const needsInput = tasks.filter((task) => task.status === "blocked").length;
   const review = tasks.filter((task) => task.status === "review").length;
   const done = tasks.filter((task) => task.status === "done").length;

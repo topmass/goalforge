@@ -303,6 +303,8 @@ function nextAction(task: Task): string {
       return "finish implementation and validation";
     case "review":
       return "review and merge";
+    case "merging":
+      return "finish the merge";
     case "blocked":
       return task.blockedReason ?? "needs input";
     case "done":

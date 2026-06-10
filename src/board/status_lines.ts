@@ -79,7 +79,8 @@ export function formatHealthLines(board: BoardSnapshot): string[] {
   const staleAgents = board.agentStatuses.filter((status) => status.risk === "stale").length;
   const ready = board.tasks.filter((task) => task.status === "ready" || task.status === "inbox")
     .length;
-  const working = board.tasks.filter((task) => task.status === "in_progress").length;
+  const working =
+    board.tasks.filter((task) => task.status === "in_progress" || task.status === "merging").length;
   const needsInput = board.tasks.filter((task) => task.status === "blocked").length;
   const review = board.tasks.filter((task) => task.status === "review").length;
   const done = board.tasks.filter((task) => task.status === "done").length;

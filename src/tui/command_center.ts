@@ -38,6 +38,7 @@ const STATUS_BADGE: Record<string, string> = {
   ready: "RD",
   in_progress: "WK",
   review: "RV",
+  merging: "MG",
   blocked: "BL",
   done: "DN",
 };

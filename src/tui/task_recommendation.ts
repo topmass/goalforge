@@ -63,6 +63,13 @@ export function taskRecommendation(
         "Review the changed files and validation evidence, then merge when the result is approved.",
     };
   }
+  if (task.status === "merging") {
+    return {
+      heading: "Recommended Action",
+      summary: "Review approved. GoalForge is merging this task.",
+      action: "No action needed. The task moves to Done when the merge completes.",
+    };
+  }
   if (task.status === "done") {
     const gaps = task.validation.trim() ? parseValidationEvidence(task.validation).gaps : [
       "missing validation evidence",
