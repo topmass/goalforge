@@ -25,8 +25,9 @@ import {
   updateGlobalConfig,
 } from "./board/global_config.ts";
 
-const root = normalizeRoot(Deno.cwd());
-const [command, ...args] = normalizeArgs(applyBackendFlags(Deno.args));
+const dirFlag = applyDirFlag(Deno.args);
+const root = normalizeRoot(dirFlag.root);
+const [command, ...args] = normalizeArgs(applyBackendFlags(dirFlag.args));
 
 try {
   switch (command) {
@@ -383,6 +384,28 @@ async function hooksCommand(args: string[]): Promise<void> {
   if (target === "codex") {
     console.log("Codex CLI loads hooks when [features] hooks = true in ~/.codex/config.toml.");
   }
+}
+
+function applyDirFlag(rawArgs: string[]): { root: string; args: string[] } {
+  const remaining: string[] = [];
+  let dir: string | null = null;
+  for (let index = 0; index < rawArgs.length; index++) {
+    const arg = rawArgs[index];
+    if (arg === "-C" || arg === "--dir") {
+      dir = rawArgs[++index] ?? null;
+    } else {
+      remaining.push(arg);
+    }
+  }
+  if (dir) {
+    try {
+      Deno.chdir(dir);
+    } catch {
+      console.error(`goalforge: cannot use directory: ${dir}`);
+      Deno.exit(1);
+    }
+  }
+  return { root: Deno.cwd(), args: remaining };
 }
 
 function applyBackendFlags(rawArgs: string[]): string[] {
@@ -925,6 +948,10 @@ Usage:
   goalforge doctor
   goalforge status
   goalforge hooks [print | install claude | install codex]
+
+Target directory (any command):
+  -C, --dir <path>            Run GoalForge in that project folder instead of the
+                              current directory
 
 Agent backend (any command, saved to ~/.goalforge/config.json):
   --codex                     Native Codex app-server (default)

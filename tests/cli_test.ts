@@ -323,3 +323,44 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
     Deno.removeSync(home, { recursive: true });
   }
 });
+
+Deno.test("CLI -C targets another project directory", async () => {
+  const project = Deno.makeTempDirSync({ prefix: "goalforge-cli-dir-" });
+  const elsewhere = Deno.makeTempDirSync({ prefix: "goalforge-cli-cwd-" });
+  const home = Deno.makeTempDirSync({ prefix: "goalforge-home-" });
+  try {
+    const output = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--allow-read",
+        "--allow-write",
+        "--allow-env",
+        "--allow-run",
+        "--allow-net",
+        new URL("../src/cli.ts", import.meta.url).pathname,
+        "-C",
+        project,
+        "status",
+      ],
+      cwd: elsewhere,
+      env: { GOALFORGE_HOME: home },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
+    assertStringIncludes(new TextDecoder().decode(output.stdout), "Active goal:");
+    const stat = await Deno.stat(`${project}/.goalforge`);
+    assertEquals(stat.isDirectory, true);
+    let elsewhereHasBoard = true;
+    try {
+      await Deno.stat(`${elsewhere}/.goalforge`);
+    } catch {
+      elsewhereHasBoard = false;
+    }
+    assertEquals(elsewhereHasBoard, false);
+  } finally {
+    Deno.removeSync(project, { recursive: true });
+    Deno.removeSync(elsewhere, { recursive: true });
+    Deno.removeSync(home, { recursive: true });
+  }
+});
