@@ -185,6 +185,9 @@ function friendlyRole(role: string): string {
     steerer: "Input",
     supervisor: "Supervisor",
     core: "Core",
+    rescue: "Rescue Model",
+    pursuer: "Pursuer",
+    publisher: "Core",
     "main-thread": "Project Memory",
     goal: "Goal",
   };

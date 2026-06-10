@@ -8,6 +8,8 @@ import {
   CodexTurnResult,
 } from "./codex_app_server.ts";
 import { createAgentClient } from "./agent_backend.ts";
+import { readGlobalConfig } from "../board/global_config.ts";
+import { consultRescue, RescueClientFactory } from "./rescue.ts";
 import { extractTurnId } from "./codex_event_normalizer.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 import {
@@ -46,6 +48,7 @@ export interface GoalForgeWorkerOptions {
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  createRescueClient?: RescueClientFactory;
   pullRequestGate?: PullRequestGate;
 }
 
@@ -61,6 +64,7 @@ export class GoalForgeWorker {
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
   readonly pullRequestGate: PullRequestGate;
+  private readonly createRescueClient?: RescueClientFactory;
   private mergeChain: Promise<void> = Promise.resolve();
 
   constructor(root: string, store: BoardStore, options: GoalForgeWorkerOptions = {}) {
@@ -69,6 +73,7 @@ export class GoalForgeWorker {
     this.onEvent = options.onEvent;
     this.createCodexClient = options.createCodexClient ??
       ((onEvent) => createAgentClient(this.root, onEvent));
+    this.createRescueClient = options.createRescueClient;
     this.pullRequestGate = options.pullRequestGate ?? new GhPullRequestGate(this.root);
   }
 
@@ -444,6 +449,7 @@ export class GoalForgeWorker {
       let verificationGates = "";
       let verificationNotes = "VERIFICATION_PASSED\n- Verification did not report failures.";
       let repairEvidence = "";
+      let rescueConsulted = false;
       for (let loopTurn = 1; loopTurn <= maxTurns; loopTurn++) {
         const isRepair = Boolean(repairEvidence);
         this.throwIfStopRequested(run.id);
@@ -596,6 +602,75 @@ export class GoalForgeWorker {
           return this.store.getTask(task.id);
         }
         repairEvidence = verification.notes;
+        const globalConfig = readGlobalConfig();
+        if (
+          globalConfig.rescue.enabled && !rescueConsulted &&
+          loopTurn >= globalConfig.rescue.afterAttempts
+        ) {
+          rescueConsulted = true;
+          this.emit(
+            this.store.appendEvent(
+              task.id,
+              run.id,
+              "rescue",
+              "consult",
+              `Rescue model (${globalConfig.rescue.backend}) is reviewing ${task.id} after ${loopTurn} failed attempt${
+                loopTurn === 1 ? "" : "s"
+              }.`,
+            ),
+          );
+          const guidance = await consultRescue({
+            root: this.root,
+            task,
+            worktreePath: session.cwd,
+            failureNotes: verification.notes,
+            attempts: loopTurn,
+            onEvent: (event) => {
+              if (shouldRecordActivity(event)) {
+                this.emit(
+                  this.store.appendEvent(
+                    task.id,
+                    run.id,
+                    event.role,
+                    event.kind,
+                    event.message,
+                    event.raw,
+                  ),
+                );
+              }
+            },
+            createRescueClient: this.createRescueClient,
+            config: globalConfig,
+          });
+          if (guidance) {
+            repairEvidence =
+              `${verification.notes}\n\nRescue model diagnosis (follow this exactly):\n${guidance}`;
+            try {
+              this.store.addLesson(`${task.id} rescue: ${shortName(guidance, 240)}`, "rescue");
+            } catch {
+              // Lessons are best effort.
+            }
+            this.emit(
+              this.store.appendEvent(
+                task.id,
+                run.id,
+                "rescue",
+                "diagnosis",
+                shortName(guidance, 300),
+              ),
+            );
+          } else {
+            this.emit(
+              this.store.appendEvent(
+                task.id,
+                run.id,
+                "rescue",
+                "consult",
+                "Rescue model returned no usable guidance; continuing with strategy rotation.",
+              ),
+            );
+          }
+        }
         this.emit(
           this.store.appendEvent(
             task.id,

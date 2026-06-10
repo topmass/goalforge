@@ -23,6 +23,11 @@ export interface GlobalConfig {
   claude: {
     model: string;
   };
+  rescue: {
+    enabled: boolean;
+    backend: AgentBackend;
+    afterAttempts: number;
+  };
 }
 
 export interface GlobalConfigPatch {
@@ -30,6 +35,7 @@ export interface GlobalConfigPatch {
   local?: Partial<GlobalConfig["local"]>;
   pi?: Partial<GlobalConfig["pi"]>;
   claude?: Partial<GlobalConfig["claude"]>;
+  rescue?: Partial<GlobalConfig["rescue"]>;
 }
 
 export function goalforgeHome(): string {
@@ -60,6 +66,11 @@ export function defaultGlobalConfig(): GlobalConfig {
     claude: {
       model: "claude-sonnet-4-6",
     },
+    rescue: {
+      enabled: false,
+      backend: "codex",
+      afterAttempts: 2,
+    },
   };
 }
 
@@ -85,7 +96,16 @@ export function readGlobalConfig(): GlobalConfig {
     claude: {
       model: stringValue(record(parsed.claude).model, defaults.claude.model),
     },
+    rescue: {
+      enabled: record(parsed.rescue).enabled === true,
+      backend: normalizeBackend(record(parsed.rescue).backend, defaults.rescue.backend),
+      afterAttempts: intValue(record(parsed.rescue).afterAttempts, defaults.rescue.afterAttempts),
+    },
   };
+}
+
+function intValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 export function updateGlobalConfig(patch: GlobalConfigPatch): GlobalConfig {
@@ -95,6 +115,7 @@ export function updateGlobalConfig(patch: GlobalConfigPatch): GlobalConfig {
     local: { ...current.local, ...patch.local },
     pi: { ...current.pi, ...patch.pi },
     claude: { ...current.claude, ...patch.claude },
+    rescue: { ...current.rescue, ...patch.rescue },
   };
   Deno.mkdirSync(goalforgeHome(), { recursive: true });
   Deno.writeTextFileSync(globalConfigPath(), `${JSON.stringify(next, null, 2)}\n`);

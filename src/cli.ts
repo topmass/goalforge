@@ -23,6 +23,7 @@ import { readWorkflow } from "./workflow/workflow.ts";
 import {
   AgentBackend,
   describeBackend,
+  normalizeBackend,
   readGlobalConfig,
   updateGlobalConfig,
 } from "./board/global_config.ts";
@@ -437,7 +438,12 @@ async function pursueCommand(args: string[]): Promise<void> {
   const iterIndex = args.indexOf("--iterations");
   const maxIterations = iterIndex >= 0 ? Number(args[iterIndex + 1]) : 24;
   const escalateIndex = args.indexOf("--escalate");
-  const escalateBackend = escalateIndex >= 0 ? args[escalateIndex + 1] : undefined;
+  const rescueConfig = readGlobalConfig().rescue;
+  const escalateBackend = escalateIndex >= 0
+    ? args[escalateIndex + 1]
+    : rescueConfig.enabled
+    ? rescueConfig.backend
+    : undefined;
   const all = args.includes("--all");
   const goalId = args.find((arg, index) =>
     !arg.startsWith("-") &&
@@ -565,6 +571,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
   let backend: AgentBackend | null = null;
   let endpoint: string | null = null;
   let model: string | null = null;
+  let rescue: string | null = null;
+  let rescueAfter: number | null = null;
   for (let index = 0; index < rawArgs.length; index++) {
     const arg = rawArgs[index];
     if (arg === "--codex" || arg === "--pi" || arg === "--claude" || arg === "--local") {
@@ -573,9 +581,32 @@ function applyBackendFlags(rawArgs: string[]): string[] {
       endpoint = rawArgs[++index] ?? null;
     } else if (arg === "--agent-model") {
       model = rawArgs[++index] ?? null;
+    } else if (arg === "--rescue") {
+      rescue = rawArgs[++index] ?? null;
+    } else if (arg === "--rescue-after") {
+      rescueAfter = Number(rawArgs[++index]);
     } else {
       remaining.push(arg);
     }
+  }
+  if (rescue || Number.isInteger(rescueAfter)) {
+    const config = updateGlobalConfig({
+      rescue: {
+        ...(rescue === "off"
+          ? { enabled: false }
+          : rescue
+          ? { enabled: true, backend: normalizeBackend(rescue, "codex") }
+          : {}),
+        ...(Number.isInteger(rescueAfter) && rescueAfter! > 0
+          ? { afterAttempts: rescueAfter! }
+          : {}),
+      },
+    });
+    console.error(
+      config.rescue.enabled
+        ? `GoalForge rescue model: ${config.rescue.backend} after ${config.rescue.afterAttempts} failed attempts (saved)`
+        : "GoalForge rescue model: off (saved)",
+    );
   }
   if (!backend && !endpoint && !model) {
     return remaining;
@@ -1038,6 +1069,11 @@ function doctorCommand(): void {
   ];
   const config = readGlobalConfig();
   console.log(`backend: ${describeBackend(config)}`);
+  console.log(
+    config.rescue.enabled
+      ? `rescue: ${config.rescue.backend} reviews stuck tasks after ${config.rescue.afterAttempts} failed attempts`
+      : "rescue: off (arm with --rescue codex or the TUI Rescue button)",
+  );
   const missingRequired = checks.filter((check) => check.label === "Git" && !check.path);
   for (const check of checks) {
     const ok = check.ok ?? Boolean(check.path);
@@ -1116,6 +1152,11 @@ Agent backend (any command, saved to ~/.goalforge/config.json):
   --local [--endpoint URL] [--agent-model M]
                               Any OpenAI-compatible endpoint via pi
                               (llama.cpp, LM Studio, vLLM, Ollama; remembers URL)
+
+Rescue model (saved; also a toggle button in the TUI footer):
+  --rescue <codex|claude|local|pi|off>   Stronger model reviews stuck tasks and
+                                         tells the worker how to fix them
+  --rescue-after N                       Failed attempts before it chimes in (default 2)
 
 Running goalforge with no command opens the TUI.
 `);

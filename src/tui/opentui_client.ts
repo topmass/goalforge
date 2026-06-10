@@ -129,6 +129,7 @@ interface RuntimeSnapshot {
   queueRunning: boolean;
   workflow: { maxConcurrentAgents: number };
   config: { model: string; reasoningEffort: string; fastMode: boolean };
+  rescue?: { enabled: boolean; backend: string; afterAttempts: number };
   activeAgentStatuses: AgentStatus[];
   needsInputTasks: Task[];
   dispatchableTasks: Task[];
@@ -150,6 +151,7 @@ interface AppState {
 interface FooterAction {
   label: string;
   run: () => void;
+  emphasized?: boolean;
 }
 
 interface HitZone {
@@ -1007,7 +1009,61 @@ function createFooterActionRows(): FooterAction[][] {
     { label: "Delete Task", run: deleteSelectedTask },
     { label: "Exit", run: shutdown },
   ];
+  primary.push({
+    label: rescueLabel(),
+    run: cycleRescue,
+    emphasized: Boolean(state.runtime?.rescue?.enabled),
+  });
   return [primary, secondary];
+}
+
+const RESCUE_CYCLE = ["off", "codex", "claude", "local", "pi"] as const;
+
+function rescueLabel(): string {
+  const rescue = state.runtime?.rescue;
+  return rescue?.enabled ? `Rescue: ${rescue.backend}` : "Rescue: Off";
+}
+
+function cycleRescue(): void {
+  const rescue = state.runtime?.rescue;
+  const current = rescue?.enabled ? rescue.backend : "off";
+  const index = RESCUE_CYCLE.indexOf(current as typeof RESCUE_CYCLE[number]);
+  const next = RESCUE_CYCLE[(index + 1) % RESCUE_CYCLE.length];
+  void runAction(
+    "Rescue model",
+    async () => {
+      const updated = await patch("/api/rescue", {
+        enabled: next !== "off",
+        ...(next !== "off" ? { backend: next } : {}),
+      }) as { enabled: boolean; backend: string; afterAttempts: number };
+      if (state.runtime) {
+        state.runtime.rescue = updated;
+      }
+      return updated;
+    },
+    {
+      started: "Updating rescue model...",
+      complete: (result) => {
+        const rescueState = result as { enabled: boolean; backend: string; afterAttempts: number };
+        return rescueState.enabled
+          ? `Rescue model armed: ${rescueState.backend} reviews stuck tasks after ${rescueState.afterAttempts} failed tries (for pursue loops and long runs).`
+          : "Rescue model off.";
+      },
+    },
+  );
+}
+
+async function patch(path: string, body: unknown): Promise<unknown> {
+  const response = await fetch(`${url}${path}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(String(payload.error || response.statusText));
+  }
+  return await response.json();
 }
 
 function selectedTaskFooterAction(): FooterAction | null {
@@ -1042,13 +1098,13 @@ function footerButton(action: FooterAction) {
     {
       height: 1,
       width: footerButtonWidth(action),
-      backgroundColor: "#203029",
+      backgroundColor: action.emphasized ? "#4A3D1F" : "#203029",
       onMouseDown: () => {
         action.run();
         render();
       },
     },
-    Text({ content: ` ${action.label} `, fg: "#B7F7D4" }),
+    Text({ content: ` ${action.label} `, fg: action.emphasized ? "#FDE68A" : "#B7F7D4" }),
   );
 }
 
@@ -1455,6 +1511,9 @@ function mainThreadLines(): string[] {
   return [
     "Project Health",
     ...formatHealthLines(state.board).slice(0, 4),
+    state.runtime?.rescue?.enabled
+      ? `Rescue: ${state.runtime.rescue.backend} after ${state.runtime.rescue.afterAttempts} tries`
+      : "Rescue: off",
     "",
     `Memory thread: ${state.board.projectState.mainThreadId ?? "not started"}`,
     `Created: ${state.board.projectState.mainThreadCreatedAt ?? "not started"}`,

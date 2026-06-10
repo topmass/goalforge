@@ -8,6 +8,7 @@ import {
 } from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
+import { normalizeBackend, readGlobalConfig, updateGlobalConfig } from "../board/global_config.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
@@ -148,6 +149,7 @@ export function startServer(
           return json({
             queueRunning,
             config: readConfig(normalizedRoot),
+            rescue: readGlobalConfig().rescue,
             workflow: readWorkflow(normalizedRoot),
             projectState: board.projectState,
             runningRuns: board.runs.filter((run) => run.status === "running"),
@@ -241,6 +243,37 @@ export function startServer(
           await worker.compactMainThread();
           broadcastBoard();
           return json(store.getProjectState());
+        }
+
+        if (url.pathname === "/api/rescue" && request.method === "PATCH") {
+          const body = await readJson<{
+            enabled?: boolean;
+            backend?: string;
+            afterAttempts?: number;
+          }>(request);
+          const updated = updateGlobalConfig({
+            rescue: {
+              ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+              ...(typeof body.backend === "string" && body.backend.trim()
+                ? { backend: normalizeBackend(body.backend.trim(), "codex") }
+                : {}),
+              ...(Number.isInteger(body.afterAttempts) && body.afterAttempts! > 0
+                ? { afterAttempts: body.afterAttempts }
+                : {}),
+            },
+          });
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "rescue",
+              "config",
+              updated.rescue.enabled
+                ? `Rescue model armed: ${updated.rescue.backend} after ${updated.rescue.afterAttempts} failed attempts.`
+                : "Rescue model disarmed.",
+            ),
+          );
+          return json(updated.rescue);
         }
 
         if (url.pathname === "/api/config" && request.method === "PATCH") {

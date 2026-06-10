@@ -68,6 +68,21 @@ twice triggers escalation or a clean stop with one clear ask, and lessons learne
 every future prompt. In the morning, `goalforge standup` tells you what shipped with proof and
 exactly what needs you.
 
+### Rescue model
+
+Arm a stronger model as the on-call senior engineer: when the working model fails verification N
+times, the rescue model reviews the task, the failure, and the actual diff, then tells the worker
+exactly how to fix it - it never implements. Toggle it with the highlighted **Rescue** button in the
+TUI footer (click to cycle Off, codex, claude, local, pi) or:
+
+```bash
+goalforge --rescue codex --rescue-after 2   # saved; works for runs and pursue loops
+goalforge --rescue off
+```
+
+With rescue armed, pursue loops also use it as the takeover backend when guidance alone is not
+enough. Claude as the rescue backend consumes your Anthropic extra usage.
+
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
 and Reply both answers a blocked agent and restarts it.
 
