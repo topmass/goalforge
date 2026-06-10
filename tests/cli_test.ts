@@ -270,3 +270,56 @@ Deno.test("CLI doctor reports local prerequisites", async () => {
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("CLI backend flags persist to the global config and warn for claude", async () => {
+  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-backend-" });
+  const home = Deno.makeTempDirSync({ prefix: "goalforge-home-" });
+  const run = (...flags: string[]) =>
+    new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--allow-read",
+        "--allow-write",
+        "--allow-env",
+        "--allow-run",
+        "--allow-net",
+        new URL("../src/cli.ts", import.meta.url).pathname,
+        ...flags,
+        "help",
+      ],
+      cwd: root,
+      env: { GOALFORGE_HOME: home },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+  try {
+    const local = await run(
+      "--local",
+      "--endpoint",
+      "http://100.64.0.7:8080/v1",
+      "--agent-model",
+      "qwen3-coder",
+    );
+    assertEquals(local.code, 0, new TextDecoder().decode(local.stderr));
+    const localNotice = new TextDecoder().decode(local.stderr);
+    assertStringIncludes(localNotice, "local via pi");
+    assertStringIncludes(localNotice, "saved for next time");
+    const saved = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(saved.backend, "local");
+    assertEquals(saved.local.endpoint, "http://100.64.0.7:8080/v1");
+    assertEquals(saved.local.model, "qwen3-coder");
+
+    const claude = await run("--claude");
+    const claudeNotice = new TextDecoder().decode(claude.stderr);
+    assertStringIncludes(claudeNotice, "extra usage");
+
+    const codex = await run("--codex");
+    assertEquals(codex.code, 0);
+    const final = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(final.backend, "codex");
+    assertEquals(final.local.endpoint, "http://100.64.0.7:8080/v1");
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    Deno.removeSync(home, { recursive: true });
+  }
+});

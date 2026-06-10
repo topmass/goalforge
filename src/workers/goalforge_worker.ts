@@ -2,12 +2,12 @@ import { BoardStore, readConfig } from "../board/store.ts";
 import { summarizeGoalProgress } from "../board/goal_progress.ts";
 import { ActivityEvent, ActivityEventInput, QueuedMessage, Task } from "../board/types.ts";
 import {
-  CodexAppServerClient,
   CodexClient,
   CodexSession,
   CodexSessionOptions,
   CodexTurnResult,
 } from "./codex_app_server.ts";
+import { createAgentClient } from "./agent_backend.ts";
 import { extractTurnId } from "./codex_event_normalizer.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 import {
@@ -68,7 +68,7 @@ export class GoalForgeWorker {
     this.store = store;
     this.onEvent = options.onEvent;
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
+      ((onEvent) => createAgentClient(this.root, onEvent));
     this.pullRequestGate = options.pullRequestGate ?? new GhPullRequestGate(this.root);
   }
 

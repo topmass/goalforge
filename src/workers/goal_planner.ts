@@ -1,7 +1,7 @@
 import { ActivityEventInput, TaskDraft } from "../board/types.ts";
-import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { CodexClient } from "./codex_app_server.ts";
+import { createAgentClient } from "./agent_backend.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
-import { readConfig } from "../board/store.ts";
 import { readWorkflow } from "../workflow/workflow.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 
@@ -31,7 +31,7 @@ export class GoalPlanner {
     this.onEvent = options.onEvent;
     this.projectMemory = options.projectMemory;
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
+      ((onEvent) => createAgentClient(this.root, onEvent));
   }
 
   async plan(goalText: string): Promise<TaskDraft[]> {

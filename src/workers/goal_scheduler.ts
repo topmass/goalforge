@@ -1,7 +1,7 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
-import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { CodexClient } from "./codex_app_server.ts";
+import { createAgentClient } from "./agent_backend.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
-import { readConfig } from "../board/store.ts";
 import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface ScheduleDecision {
@@ -24,7 +24,7 @@ export class GoalScheduler {
 
   constructor(private readonly root: string, private readonly options: GoalSchedulerOptions = {}) {
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
+      ((onEvent) => createAgentClient(this.root, onEvent));
   }
 
   async selectBatch(tasks: Task[], maxConcurrency: number): Promise<ScheduleDecision> {

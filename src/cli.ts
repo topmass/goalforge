@@ -18,9 +18,15 @@ import {
   mergeHookSettings,
 } from "./workers/agent_hooks.ts";
 import { readWorkflow } from "./workflow/workflow.ts";
+import {
+  AgentBackend,
+  describeBackend,
+  readGlobalConfig,
+  updateGlobalConfig,
+} from "./board/global_config.ts";
 
 const root = normalizeRoot(Deno.cwd());
-const [command, ...args] = normalizeArgs(Deno.args);
+const [command, ...args] = normalizeArgs(applyBackendFlags(Deno.args));
 
 try {
   switch (command) {
@@ -377,6 +383,57 @@ async function hooksCommand(args: string[]): Promise<void> {
   if (target === "codex") {
     console.log("Codex CLI loads hooks when [features] hooks = true in ~/.codex/config.toml.");
   }
+}
+
+function applyBackendFlags(rawArgs: string[]): string[] {
+  const remaining: string[] = [];
+  let backend: AgentBackend | null = null;
+  let endpoint: string | null = null;
+  let model: string | null = null;
+  for (let index = 0; index < rawArgs.length; index++) {
+    const arg = rawArgs[index];
+    if (arg === "--codex" || arg === "--pi" || arg === "--claude" || arg === "--local") {
+      backend = arg.slice(2) as AgentBackend;
+    } else if (arg === "--endpoint") {
+      endpoint = rawArgs[++index] ?? null;
+    } else if (arg === "--agent-model") {
+      model = rawArgs[++index] ?? null;
+    } else {
+      remaining.push(arg);
+    }
+  }
+  if (!backend && !endpoint && !model) {
+    return remaining;
+  }
+  if (!backend && (endpoint || model)) {
+    backend = endpoint ? "local" : readGlobalConfig().backend;
+  }
+  const localPatch: { endpoint?: string; model?: string } = {};
+  if (endpoint) {
+    localPatch.endpoint = endpoint;
+  }
+  if (model && backend === "local") {
+    localPatch.model = model;
+  }
+  const config = updateGlobalConfig({
+    ...(backend ? { backend } : {}),
+    ...(Object.keys(localPatch).length ? { local: localPatch } : {}),
+    ...(model && backend === "claude" ? { claude: { model } } : {}),
+    ...(model && backend === "pi" ? { pi: { model } } : {}),
+  });
+  console.error(`GoalForge agent backend: ${describeBackend(config)} (saved for next time)`);
+  if (config.backend === "claude") {
+    console.error(
+      "Note: the claude backend runs through your Anthropic account (claude.ai subscription " +
+        "extra usage or API credits). GoalForge worker runs will consume that budget.",
+    );
+  }
+  if (config.backend === "pi" || config.backend === "claude" || config.backend === "local") {
+    console.error(
+      "Backend runs through pi (pi.dev). Install with: pnpm add -g @earendil-works/pi-coding-agent",
+    );
+  }
+  return remaining;
 }
 
 function stripPortArgs(args: string[], portArgIndex: number): string[] {
@@ -797,7 +854,15 @@ function doctorCommand(): void {
       okNote: "smoke tests and bridge scripts can run",
       missingNote: "install python3 for smoke tests and bridge scripts",
     },
+    {
+      label: "pi",
+      path: resolveExecutable("pi", [homePath(".local/share/pnpm/pi"), homePath(".bun/bin/pi")]),
+      okNote: "pi, claude, and local backends can launch",
+      missingNote: "install for non-codex backends: pnpm add -g @earendil-works/pi-coding-agent",
+    },
   ];
+  const config = readGlobalConfig();
+  console.log(`backend: ${describeBackend(config)}`);
   const missingRequired = checks.filter((check) => check.label === "Git" && !check.path);
   for (const check of checks) {
     const ok = check.ok ?? Boolean(check.path);
@@ -860,6 +925,14 @@ Usage:
   goalforge doctor
   goalforge status
   goalforge hooks [print | install claude | install codex]
+
+Agent backend (any command, saved to ~/.goalforge/config.json):
+  --codex                     Native Codex app-server (default)
+  --pi [--agent-model M]      pi (pi.dev) with its configured or given model
+  --claude [--agent-model M]  Claude via pi (uses your Anthropic extra usage budget)
+  --local [--endpoint URL] [--agent-model M]
+                              Any OpenAI-compatible endpoint via pi
+                              (llama.cpp, LM Studio, vLLM, Ollama; remembers URL)
 
 Running goalforge with no command opens the TUI.
 `);

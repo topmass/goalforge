@@ -1,9 +1,10 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
-import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
+import { CodexClient } from "./codex_app_server.ts";
+import { createAgentClient } from "./agent_backend.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
-import { BoardStore, readConfig } from "../board/store.ts";
+import { BoardStore } from "../board/store.ts";
 import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalReviewerOptions {
@@ -25,7 +26,7 @@ export class GoalReviewer {
 
   constructor(private readonly root: string, private readonly options: GoalReviewerOptions = {}) {
     this.createCodexClient = options.createCodexClient ??
-      ((onEvent) => new CodexAppServerClient(onEvent, readConfig(this.root)));
+      ((onEvent) => createAgentClient(this.root, onEvent));
   }
 
   async review(task: Task): Promise<ReviewResult> {
