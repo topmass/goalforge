@@ -132,6 +132,7 @@ and merge work.
 - Ready is dispatchable work.
 - Started is work currently owned by a Codex worker.
 - Review means implementation and validation evidence exist.
+- Merging means review approved and GoalForge is applying the local merge or PR gate.
 - Inbox also holds work that needs user direction or a resolved blocker.
 - Done means the reviewer approved the work and GoalForge merged it.
 

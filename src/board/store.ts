@@ -59,7 +59,8 @@ const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   inbox: ["ready", "blocked"],
   ready: ["in_progress", "blocked", "inbox"],
   in_progress: ["review", "blocked", "ready"],
-  review: ["done", "in_progress", "blocked"],
+  review: ["merging", "done", "in_progress", "blocked"],
+  merging: ["done", "blocked", "review"],
   blocked: ["ready", "in_progress"],
   done: ["review"],
 };
@@ -784,7 +785,9 @@ export class BoardStore {
         } after restart.`,
       ),
     );
-    const stuckTasks = this.db.prepare("SELECT * FROM tasks WHERE status = 'in_progress'")
+    const stuckTasks = this.db.prepare(
+      "SELECT * FROM tasks WHERE status IN ('in_progress', 'review', 'merging')",
+    )
       .all() as SqlRow[];
     for (const row of stuckTasks) {
       const task = taskFromRow(row);
@@ -793,7 +796,7 @@ export class BoardStore {
           task.id,
           "blocked",
           "orchestrator",
-          "GoalForge restarted while this task was running. Add a message or restart it.",
+          "GoalForge restarted while this task was active. Add a message or restart it.",
         ).event,
       );
     }

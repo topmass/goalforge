@@ -29,6 +29,7 @@ Board states:
 - Ready: unblocked and dispatchable.
 - Started: actively owned by an agent.
 - Review: implementation claims are complete and validation evidence exists.
+- Merging: review approved and GoalForge is merging locally or through a PR gate.
 - Inbox: cannot proceed without new information or dependency resolution.
 - Done: reviewed and accepted.
 

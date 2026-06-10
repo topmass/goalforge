@@ -278,6 +278,29 @@ Deno.test("transition validation prevents review without evidence", () => {
   }
 });
 
+Deno.test("reviewed tasks move through merging before done", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Show merge progress");
+    store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.updateTaskValidation(task.id, "Unit test evidence");
+    store.requestTransition(task.id, "review", "test", "proof attached");
+    assertEquals(
+      store.requestTransition(task.id, "merging", "test", "review approved").task.status,
+      "merging",
+    );
+    assertEquals(
+      store.requestTransition(task.id, "done", "test", "merged").task.status,
+      "done",
+    );
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
 Deno.test("running runs prevent duplicate task claims", () => {
   const root = Deno.makeTempDirSync();
   const store = new BoardStore(root);
@@ -397,6 +420,27 @@ Deno.test("startup recovery blocks stale started tasks", () => {
     store.initProject();
     const { task } = store.createGoal("Recover stale started task");
     store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.createRun(task.id, "worker");
+    const events = store.recoverStaleRuns();
+    assertEquals(events.length, 2);
+    assertEquals(store.getTask(task.id).status, "blocked");
+    assertEquals(store.getBoard().runs[0].status, "failed");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("startup recovery blocks stale merging tasks", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Recover stale merging task");
+    store.requestTransition(task.id, "in_progress", "test", "claim");
+    store.updateTaskValidation(task.id, "Unit test evidence");
+    store.requestTransition(task.id, "review", "test", "proof attached");
+    store.requestTransition(task.id, "merging", "test", "review approved");
     store.createRun(task.id, "worker");
     const events = store.recoverStaleRuns();
     assertEquals(events.length, 2);

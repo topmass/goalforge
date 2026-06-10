@@ -559,7 +559,7 @@ export function startServer(
                   "reviewer",
                   "review",
                   result.verdict === "approved"
-                    ? "Review approved. Merging branch."
+                    ? "Review approved. Preparing merge."
                     : "Review requested changes. Waiting for user direction.",
                 ),
               );
@@ -585,6 +585,14 @@ export function startServer(
                 );
                 return;
               }
+              broadcastActivity(
+                store.requestTransition(
+                  task.id,
+                  "merging",
+                  "merger",
+                  "Review approved. Merging branch.",
+                ).event,
+              );
               return gitMergeBranch(normalizedRoot, task.branchName).then((output) => {
                 broadcastActivity(
                   store.appendEvent(

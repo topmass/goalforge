@@ -1362,7 +1362,7 @@ export class GoalForgeWorker {
         "reviewer",
         "review",
         result.verdict === "approved"
-          ? "Review approved. Merging branch."
+          ? "Review approved. Preparing merge."
           : "Review requested changes. Waiting for user direction.",
       ),
     );
@@ -1414,6 +1414,14 @@ export class GoalForgeWorker {
       return this.store.getTask(task.id);
     }
 
+    this.emit(
+      this.store.requestTransition(
+        task.id,
+        "merging",
+        pullRequest ? "github" : "merger",
+        pullRequest ? "Review approved. Merging GitHub PR." : "Review approved. Merging branch.",
+      ).event,
+    );
     const output = pullRequest
       ? await this.pullRequestGate.merge(task, pullRequest)
       : await this.mergeBranch(task.branchName);

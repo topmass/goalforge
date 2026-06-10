@@ -440,8 +440,11 @@ async function mergeCommand(args: string[]): Promise<void> {
     if (!task.branchName) {
       throw new Error(`${task.id} does not have an assigned branch.`);
     }
-    if (task.status !== "review" && task.status !== "done") {
-      throw new Error(`${task.id} must be in Review or Done before merge.`);
+    if (task.status !== "review" && task.status !== "merging" && task.status !== "done") {
+      throw new Error(`${task.id} must be in Review, Merging, or Done before merge.`);
+    }
+    if (task.status === "review") {
+      store.requestTransition(task.id, "merging", "merger", "Manual merge started.");
     }
     const output = await gitMergeBranch(root, task.branchName);
     const event = store.appendEvent(
@@ -452,7 +455,7 @@ async function mergeCommand(args: string[]): Promise<void> {
       output.trim() || `Merged ${task.branchName}.`,
     );
     console.log(event.message);
-    if (task.status === "review") {
+    if (task.status === "review" || task.status === "merging") {
       store.requestTransition(task.id, "done", "merger", `Merged ${task.branchName}.`);
     }
     console.log(`${task.id} is now Done.`);
@@ -494,7 +497,7 @@ async function reviewCommand(args: string[]): Promise<void> {
       "reviewer",
       "review",
       result.verdict === "approved"
-        ? "Review approved. Merging branch."
+        ? "Review approved. Preparing merge."
         : "Review requested changes. Waiting for user direction.",
     );
     if (result.verdict !== "approved") {
@@ -517,6 +520,12 @@ async function reviewCommand(args: string[]): Promise<void> {
       console.log(`${task.id} has no branch to merge. Moved to Inbox.`);
       return;
     }
+    store.requestTransition(
+      task.id,
+      "merging",
+      "merger",
+      "Review approved. Merging branch.",
+    );
     const output = await gitMergeBranch(root, task.branchName);
     store.appendEvent(
       task.id,
