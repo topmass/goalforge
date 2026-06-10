@@ -1,4 +1,5 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
+import { extractVerificationVerdictToken } from "../board/validation_evidence.ts";
 import { CodexSession, CodexTurnResult } from "./codex_app_server.ts";
 
 export interface TurnRunner {
@@ -101,7 +102,6 @@ Rules:
 
 export function parseVerificationResponse(responseText: string): VerificationResult {
   const notes = responseText.trim();
-  const verdict = notes.toUpperCase();
   if (!notes) {
     return {
       verdict: "failed",
@@ -109,14 +109,18 @@ export function parseVerificationResponse(responseText: string): VerificationRes
         "VERIFICATION_FAILED\n- Test engineer returned no explicit verification verdict or notes.",
     };
   }
-  if (verdict.startsWith("NEEDS_INPUT")) {
-    return { verdict: "needs_input", notes };
+  const verdict = extractVerificationVerdictToken(notes);
+  const normalized = verdict && !notes.toUpperCase().startsWith(verdict)
+    ? `${verdict}\n${notes}`
+    : notes;
+  if (verdict === "NEEDS_INPUT") {
+    return { verdict: "needs_input", notes: normalized };
   }
-  if (verdict.startsWith("VERIFICATION_FAILED")) {
-    return { verdict: "failed", notes };
+  if (verdict === "VERIFICATION_FAILED") {
+    return { verdict: "failed", notes: normalized };
   }
-  if (verdict.startsWith("VERIFICATION_PASSED")) {
-    if (!hasProofDetails(notes)) {
+  if (verdict === "VERIFICATION_PASSED") {
+    if (!hasProofDetails(normalized)) {
       return {
         verdict: "failed",
         notes: [
@@ -128,7 +132,7 @@ export function parseVerificationResponse(responseText: string): VerificationRes
         ].join("\n"),
       };
     }
-    return { verdict: "passed", notes };
+    return { verdict: "passed", notes: normalized };
   }
   return {
     verdict: "failed",

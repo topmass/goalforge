@@ -61,10 +61,26 @@ export class GoalReviewer {
 
     try {
       const session = await codex.startSession(task.worktreePath);
-      await codex.runTurn(session, {
-        title: `${task.id}: review`,
-        prompt: buildReviewPrompt(task, projectInstructions, projectMemory, workflow.instructions),
-      });
+      const prompt = buildReviewPrompt(
+        task,
+        projectInstructions,
+        projectMemory,
+        workflow.instructions,
+      );
+      // Transient transport drops can end a turn with no captured text.
+      // Retry the review turn in place before failing the whole task attempt.
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        responseText = "";
+        await codex.runTurn(session, {
+          title: `${task.id}: review`,
+          prompt: attempt === 1
+            ? prompt
+            : "Your previous review reply did not arrive. Reply again now with your final verdict: start with APPROVED or CHANGES_REQUESTED, then your notes.",
+        });
+        if (responseText.trim()) {
+          break;
+        }
+      }
       return parseReviewResponse(responseText);
     } finally {
       await codex.stop().catch(() => {});

@@ -45,9 +45,8 @@ export function parseValidationEvidence(validation: string): ValidationEvidence 
     : false;
   const testCompleted = testStatus ? /^completed$/i.test(testStatus.trim()) : false;
   const verificationGatesRecorded = verificationGates.length > 0;
-  const verificationPassed = verificationVerdict
-    ? /^VERIFICATION_PASSED/i.test(verificationVerdict.trim())
-    : false;
+  const verificationPassed =
+    extractVerificationVerdictToken(verificationLines.join("\n")) === "VERIFICATION_PASSED";
   const verificationHasProofDetails = verificationProofDetails.length > 0;
   const finalGitClean = finalGitStatus ? /^clean$/i.test(finalGitStatus.trim()) : false;
   const gaps: string[] = [];
@@ -102,6 +101,23 @@ export function parseValidationEvidence(validation: string): ValidationEvidence 
     finalGitClean,
     gaps,
   };
+}
+
+// Models narrate around verdict tokens and wrap them in markdown emphasis.
+// Accept a verdict when it leads the text or is the only distinct token
+// present (after stripping emphasis); conflicting tokens fail closed.
+export function extractVerificationVerdictToken(
+  text: string,
+): "VERIFICATION_PASSED" | "VERIFICATION_FAILED" | "NEEDS_INPUT" | null {
+  const cleaned = text.toUpperCase().replace(/[*`#]/g, "").trim();
+  for (const token of ["NEEDS_INPUT", "VERIFICATION_FAILED", "VERIFICATION_PASSED"] as const) {
+    if (cleaned.startsWith(token)) {
+      return token;
+    }
+  }
+  const found = (["VERIFICATION_PASSED", "VERIFICATION_FAILED", "NEEDS_INPUT"] as const)
+    .filter((token) => cleaned.includes(token));
+  return found.length === 1 ? found[0] : null;
 }
 
 function sectionLines(text: string, label: string): string[] {

@@ -650,7 +650,9 @@ export class GoalForgeWorker {
         "Verification verdict:",
         verificationNotes,
         "",
-        `Commit: ${commit ?? "not created"}`,
+        `Commit: ${
+          commit ?? (touchedPaths.length ? "not created" : "not needed (no file changes)")
+        }`,
         "",
         "Pre-commit git status:",
         preCommitStatus.trim() || "clean",

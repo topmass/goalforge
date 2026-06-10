@@ -120,3 +120,21 @@ Deno.test("validation evidence parser reports missing completion proof", () => {
     "missing final git status",
   ]);
 });
+
+Deno.test("evidence accepts commit not needed for evidence-only tasks", () => {
+  const evidence = parseValidationEvidence([
+    "Turn status: completed",
+    "Test turn status: completed",
+    "Discovered verification gates:",
+    "- Diff inspection: git diff --stat - sanity check.",
+    "Verification verdict:",
+    "VERIFICATION_PASSED",
+    "- Contract clauses proved with recorded curl transcripts.",
+    "Commit: not needed (no file changes)",
+    "Git status:",
+    "clean",
+    "GoalForge review: APPROVED",
+  ].join("\n"));
+  assertEquals(evidence.commitCreated, true);
+  assertEquals(evidence.gaps, []);
+});

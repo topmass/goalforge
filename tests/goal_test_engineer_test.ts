@@ -46,3 +46,20 @@ Deno.test("verification accepts a single-line pass verdict with same-line proof"
   const bare = parseVerificationResponse("VERIFICATION_PASSED");
   assertEquals(bare.verdict, "failed");
 });
+
+Deno.test("verification accepts narrated and emphasized verdicts but fails closed on conflicts", () => {
+  const narrated = parseVerificationResponse(
+    "Files exist, 109 lines total. Let me run the full verification.**VERIFICATION_PASSED**All 4 acceptance tests passed with curl transcripts recorded.",
+  );
+  assertEquals(narrated.verdict, "passed");
+
+  const failedNarrated = parseVerificationResponse(
+    "The build broke.\n\n**VERIFICATION_FAILED**\n- deno check reports TS2304.",
+  );
+  assertEquals(failedNarrated.verdict, "failed");
+
+  const conflicting = parseVerificationResponse(
+    "I will answer VERIFICATION_PASSED or VERIFICATION_FAILED. VERIFICATION_PASSED maybe.",
+  );
+  assertEquals(conflicting.verdict, "failed");
+});
