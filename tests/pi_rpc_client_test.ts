@@ -63,6 +63,34 @@ Deno.test("pi rpc client maps sessions, turns, and events onto the agent interfa
   }
 });
 
+Deno.test("pi rpc client keeps a turn open across an overflow compaction retry", async () => {
+  const cwd = Deno.makeTempDirSync();
+  const events: ActivityEventInput[] = [];
+  const client = new PiRpcClient((event) => events.push(event), {
+    command: fakePiCommand(),
+  });
+  try {
+    const session = await client.startSession(cwd);
+    const turn = await client.runTurn(session, {
+      title: "TASK-1: test-engineer",
+      prompt: "OVERFLOW_RETRY scenario prompt",
+    });
+    assertEquals(turn.status, "completed");
+    const agentText = events
+      .filter((event) => event.role === "codex" && event.kind === "agent")
+      .map((event) => event.message)
+      .join("");
+    assertStringIncludes(agentText, "VERIFICATION_PASSED - proof recorded after compaction");
+    assertEquals(
+      events.filter((event) => event.kind === "turn/completed").length,
+      1,
+    );
+  } finally {
+    await client.stop();
+    Deno.removeSync(cwd, { recursive: true });
+  }
+});
+
 Deno.test("worker completes a full task loop through the pi backend", async () => {
   const root = Deno.makeTempDirSync();
   await git(root, ["init", "-b", "main"]);

@@ -40,6 +40,23 @@ function streamText(text: string): void {
 
 function runPrompt(message: string): void {
   messages.push({ role: "user", content: message });
+  if (message.includes("OVERFLOW_RETRY")) {
+    write({ type: "agent_start" });
+    write({ type: "agent_end", messages: [] });
+    write({ type: "compaction_start", reason: "overflow" });
+    write({
+      type: "compaction_end",
+      reason: "overflow",
+      result: { summary: "compacted", firstKeptEntryId: "x", tokensBefore: 99000 },
+      aborted: false,
+      willRetry: true,
+    });
+    write({ type: "agent_start" });
+    streamText("VERIFICATION_PASSED - proof recorded after compaction retry.");
+    messages.push({ role: "assistant", content: "post-compaction verdict" });
+    write({ type: "agent_end", messages: [] });
+    return;
+  }
   write({ type: "agent_start" });
   write({ type: "turn_start" });
   let reply = "Fake pi acknowledged the prompt.";

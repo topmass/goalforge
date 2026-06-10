@@ -47,6 +47,9 @@ export class PiRpcClient implements CodexClient {
   private currentTurnId: string | null = null;
   private turnWaiter: TurnWaiter | null = null;
   private turnFailure: string | null = null;
+  private agentEnded = false;
+  private retryPending = false;
+  private endTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
   constructor(
@@ -112,6 +115,9 @@ export class PiRpcClient implements CodexClient {
     const turnId = `pi-turn-${++this.turnCounter}`;
     this.currentTurnId = turnId;
     this.turnFailure = null;
+    this.agentEnded = false;
+    this.retryPending = false;
+    this.cancelEndTimer();
     const done = new Promise<void>((resolve, reject) => {
       this.turnWaiter = { resolve, reject };
     });
@@ -173,6 +179,7 @@ export class PiRpcClient implements CodexClient {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.cancelEndTimer();
     for (const pending of this.pending.values()) {
       pending.reject(new Error("Pi RPC client stopped."));
     }
@@ -321,13 +328,37 @@ export class PiRpcClient implements CodexClient {
     const raw = { ...event, turnId: this.currentTurnId };
     const type = String(event.type ?? "");
     if (type === "agent_start") {
+      const isRetryContinuation = this.endTimer !== null || this.retryPending;
+      this.agentEnded = false;
+      this.cancelEndTimer();
+      if (isRetryContinuation) {
+        this.retryPending = false;
+        this.turnFailure = null;
+        this.emit("codex", "event", "Pi resumed the turn after compaction.", raw);
+        return;
+      }
       this.emit("codex", "turn/started", "Started pi turn.", raw);
       return;
     }
     if (type === "agent_end") {
-      this.emit("codex", "turn/completed", "Pi turn completed.", raw);
-      this.turnWaiter?.resolve();
-      this.turnWaiter = null;
+      // Pi may compact an overflowed context right after the agent run ends
+      // and automatically retry the prompt. Hold the turn open briefly so a
+      // compaction retry continues the same GoalForge turn.
+      this.agentEnded = true;
+      this.scheduleTurnResolve(raw);
+      return;
+    }
+    if (type === "compaction_start") {
+      this.cancelEndTimer();
+      this.emit("codex", "event", "Pi is compacting the session context.", raw);
+      return;
+    }
+    if (type === "compaction_end") {
+      if (event.willRetry === true) {
+        this.retryPending = true;
+      } else if (this.agentEnded) {
+        this.scheduleTurnResolve(raw);
+      }
       return;
     }
     if (type === "message_update") {
@@ -410,6 +441,26 @@ export class PiRpcClient implements CodexClient {
     }
     // turn_start/turn_end/message_start/message_end/compaction/queue updates are
     // intentionally quiet; the turn and tool events above carry the signal.
+  }
+
+  private scheduleTurnResolve(raw: unknown): void {
+    this.cancelEndTimer();
+    this.endTimer = setTimeout(() => {
+      this.endTimer = null;
+      if (this.retryPending) {
+        return;
+      }
+      this.emit("codex", "turn/completed", "Pi turn completed.", raw);
+      this.turnWaiter?.resolve();
+      this.turnWaiter = null;
+    }, 600);
+  }
+
+  private cancelEndTimer(): void {
+    if (this.endTimer !== null) {
+      clearTimeout(this.endTimer);
+      this.endTimer = null;
+    }
   }
 
   private emit(role: string, kind: string, message: string, raw: unknown): void {

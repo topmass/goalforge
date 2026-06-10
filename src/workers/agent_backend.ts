@@ -52,6 +52,7 @@ export function piModelsPath(): string {
 export function ensureLocalPiProvider(
   config: GlobalConfig,
   modelsPath = piModelsPath(),
+  contextWindow: number | null = detectLocalContextWindow(config.local.endpoint),
 ): boolean {
   let parsed: Record<string, unknown> = {};
   try {
@@ -68,7 +69,10 @@ export function ensureLocalPiProvider(
     baseUrl: config.local.endpoint,
     api: "openai-completions",
     apiKey: config.local.apiKey || "none",
-    models: [{ id: config.local.model }],
+    models: [{
+      id: config.local.model,
+      ...(contextWindow ? { contextWindow } : {}),
+    }],
   };
   if (existing && JSON.stringify(existing) === JSON.stringify(desired)) {
     return false;
@@ -80,6 +84,30 @@ export function ensureLocalPiProvider(
   Deno.mkdirSync(path.dirname(modelsPath), { recursive: true });
   Deno.writeTextFileSync(modelsPath, `${JSON.stringify(next, null, 2)}\n`);
   return true;
+}
+
+// llama.cpp servers report the loaded context size at /props. Without it pi
+// assumes the model's trained window and never compacts, so over-long prompts
+// silently come back empty. Other servers simply do not respond here.
+export function detectLocalContextWindow(endpoint: string): number | null {
+  try {
+    const base = endpoint.replace(/\/v1\/?$/, "");
+    const request = new Deno.Command("curl", {
+      args: ["-s", "--max-time", "3", `${base}/props`],
+      stdout: "piped",
+      stderr: "null",
+    }).outputSync();
+    if (!request.success) {
+      return null;
+    }
+    const props = JSON.parse(new TextDecoder().decode(request.stdout));
+    const nCtx = isRecord(props) && isRecord(props.default_generation_settings)
+      ? Number(props.default_generation_settings.n_ctx)
+      : NaN;
+    return Number.isInteger(nCtx) && nCtx > 0 ? nCtx : null;
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

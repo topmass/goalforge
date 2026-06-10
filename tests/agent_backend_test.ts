@@ -90,14 +90,21 @@ Deno.test("ensureLocalPiProvider merges idempotently and preserves other provide
       ...defaultGlobalConfig(),
       local: { endpoint: "http://100.1.2.3:8080/v1", model: "qwen3-coder", apiKey: "none" },
     };
-    assertEquals(ensureLocalPiProvider(config, modelsPath), true);
-    assertEquals(ensureLocalPiProvider(config, modelsPath), false);
+    assertEquals(ensureLocalPiProvider(config, modelsPath, null), true);
+    assertEquals(ensureLocalPiProvider(config, modelsPath, null), false);
     const written = JSON.parse(Deno.readTextFileSync(modelsPath));
     assertEquals(written.providers.ollama.baseUrl, "http://localhost:11434/v1");
     assertEquals(written.providers[LOCAL_PI_PROVIDER_ID].models, [{ id: "qwen3-coder" }]);
 
+    assertEquals(ensureLocalPiProvider(config, modelsPath, 32768), true);
+    const sized = JSON.parse(Deno.readTextFileSync(modelsPath));
+    assertEquals(sized.providers[LOCAL_PI_PROVIDER_ID].models, [{
+      id: "qwen3-coder",
+      contextWindow: 32768,
+    }]);
+
     config.local.endpoint = "http://other:9090/v1";
-    assertEquals(ensureLocalPiProvider(config, modelsPath), true);
+    assertEquals(ensureLocalPiProvider(config, modelsPath, null), true);
   } finally {
     Deno.removeSync(dir, { recursive: true });
   }

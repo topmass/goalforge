@@ -144,6 +144,13 @@ export function parseVerificationResponse(responseText: string): VerificationRes
 
 function hasProofDetails(notes: string): boolean {
   const lines = notes.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const sameLineProof = lines[0]
+    ?.replace(/^VERIFICATION_PASSED/i, "")
+    .replace(/^[-:\s]+/, "")
+    .trim();
+  if (sameLineProof && sameLineProof.length >= 8) {
+    return true;
+  }
   return lines.slice(1).some((line) =>
     !/^VERIFICATION_PASSED\b/i.test(line) && line.replace(/^[-*]\s*/, "").length >= 8
   );

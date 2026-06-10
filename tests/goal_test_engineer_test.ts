@@ -36,3 +36,13 @@ Deno.test("verification parser keeps needs input verdict", () => {
   assertEquals(result.verdict, "needs_input");
   assertStringIncludes(result.notes, "Which repo");
 });
+
+Deno.test("verification accepts a single-line pass verdict with same-line proof", () => {
+  const singleLine = parseVerificationResponse(
+    "VERIFICATION_PASSED**Test Handoff** 1. curl /api/notes -> [] PASS 2. POST -> 201 PASS",
+  );
+  assertEquals(singleLine.verdict, "passed");
+
+  const bare = parseVerificationResponse("VERIFICATION_PASSED");
+  assertEquals(bare.verdict, "failed");
+});
