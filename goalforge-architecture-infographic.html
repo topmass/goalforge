@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoalForge Architecture Infographic</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "loose",
+      theme: "base",
+      themeVariables: {
+        background: "#0c1016",
+        mainBkg: "#111923",
+        secondBkg: "#17212d",
+        tertiaryBkg: "#1e2a36",
+        primaryColor: "#17212d",
+        primaryTextColor: "#e7eef7",
+        primaryBorderColor: "#81d4fa",
+        lineColor: "#7dd3fc",
+        secondaryColor: "#16251f",
+        secondaryTextColor: "#e6fff1",
+        secondaryBorderColor: "#86efac",
+        tertiaryColor: "#2a2418",
+        tertiaryTextColor: "#fff7d6",
+        tertiaryBorderColor: "#fde68a",
+        noteBkgColor: "#1d2530",
+        noteTextColor: "#d8e2ef",
+        noteBorderColor: "#94a3b8",
+        fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+      },
+      flowchart: {
+        curve: "basis",
+        padding: 14,
+        nodeSpacing: 44,
+        rankSpacing: 60
+      },
+      sequence: {
+        mirrorActors: false,
+        showSequenceNumbers: true
+      }
+    });
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c1016;
+      --panel: #111923;
+      --panel-2: #17212d;
+      --ink: #e7eef7;
+      --muted: #9aa8b7;
+      --line: #263548;
+      --cyan: #73d2ff;
+      --green: #8ee6a8;
+      --gold: #ffd166;
+      --rose: #ff8fa3;
+      --violet: #c6b8ff;
+      --shadow: rgba(0, 0, 0, 0.36);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px) 0 0 / 56px 56px,
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 56px 56px,
+        radial-gradient(circle at 18% 12%, rgba(115,210,255,0.13), transparent 34%),
+        radial-gradient(circle at 80% 18%, rgba(142,230,168,0.11), transparent 30%),
+        var(--bg);
+      color: var(--ink);
+      font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    main {
+      width: min(1440px, calc(100vw - 36px));
+      margin: 0 auto;
+      padding: 34px 0 54px;
+    }
+
+    header {
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(17,25,35,0.96), rgba(14,20,28,0.92));
+      box-shadow: 0 24px 70px var(--shadow);
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, transparent 0 18%, rgba(115,210,255,0.08) 18% 18.4%, transparent 18.4%),
+        linear-gradient(90deg, transparent 0 61%, rgba(255,209,102,0.09) 61% 61.4%, transparent 61.4%);
+      pointer-events: none;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      max-width: 980px;
+      font-size: clamp(34px, 5vw, 78px);
+      line-height: 0.96;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .subhead {
+      max-width: 980px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.7;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      background: rgba(12,16,22,0.74);
+      padding: 11px 12px;
+      min-height: 64px;
+    }
+
+    .chip b {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .chip span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    section {
+      border: 1px solid var(--line);
+      background: rgba(17,25,35,0.92);
+      box-shadow: 0 18px 42px var(--shadow);
+      padding: 22px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(19px, 2.2vw, 30px);
+      text-transform: uppercase;
+    }
+
+    .section-head p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 900px;
+    }
+
+    .tag {
+      border: 1px solid currentColor;
+      color: var(--cyan);
+      padding: 7px 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .notes {
+      border-left: 2px solid var(--gold);
+      padding-left: 16px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .notes strong {
+      color: var(--ink);
+    }
+
+    .notes ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    .mermaid-wrap {
+      background: #0a0f15;
+      border: 1px solid #213044;
+      min-height: 240px;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .mermaid {
+      min-width: 820px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      gap: 12px;
+    }
+
+    .fact {
+      border: 1px solid var(--line);
+      background: rgba(10,15,21,0.78);
+      padding: 14px;
+      min-height: 122px;
+    }
+
+    .fact b {
+      color: var(--green);
+      display: block;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      font-size: 13px;
+    }
+
+    .fact p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    code {
+      color: var(--gold);
+      background: rgba(255,209,102,0.08);
+      padding: 1px 4px;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        width: min(100vw - 20px, 760px);
+        padding-top: 18px;
+      }
+
+      header,
+      section {
+        padding: 18px;
+      }
+
+      .legend,
+      .mini-grid,
+      .grid-two {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        grid-template-columns: 1fr;
+      }
+
+      .tag {
+        width: fit-content;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>GoalForge System Map</h1>
+      <p class="subhead">
+        GoalForge is a local command center on top of Codex. One persistent project memory thread
+        keeps context. Each task gets an isolated worktree and a child Codex thread. The board
+        stores task state, thread IDs, events, context packets, and handoffs.
+      </p>
+      <div class="legend" aria-label="Legend">
+        <div class="chip"><b style="color:var(--cyan)">Command Center</b><span>OpenTUI and API server for clicks, status, and board actions.</span></div>
+        <div class="chip"><b style="color:var(--green)">Main Thread</b><span>Persistent Codex memory seeded once per project directory.</span></div>
+        <div class="chip"><b style="color:var(--gold)">Task Worker</b><span>Child Codex thread in a git worktree for one feature or fix.</span></div>
+        <div class="chip"><b style="color:var(--rose)">Recovery</b><span>Missing Codex rollout becomes a fresh seeded main thread, then retry.</span></div>
+        <div class="chip"><b style="color:var(--violet)">Docs Memory</b><span><code>AGENTS.md</code>, <code>WORKFLOW.md</code>, specsheet, context manifests.</span></div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>1. Big Picture Flow</h2>
+            <p>The user drives the board from the TUI. GoalForge stores durable state locally and uses the Codex SDK bridge to start, resume, fork, run, steer, review, and absorb work.</p>
+          </div>
+          <div class="tag">Main loop</div>
+        </div>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  U["User<br/>Clicks, types, starts work"]:::user
+  T["OpenTUI Command Center<br/>Task board, details, active agents, activity"]:::ui
+  A["Local API Server<br/>/api/tasks, /api/run, /api/main/ensure"]:::ui
+  DB[("Board SQLite<br/>Tasks, runs, messages, events, thread lineage")]:::store
+  PM["Project Files<br/>AGENTS.md, WORKFLOW.md, project-specsheet.md"]:::docs
+  GF["GoalForge Worker<br/>Creates worktree, context packet, Codex task run"]:::worker
+  M["Persistent Main Codex Thread<br/>Seeded project memory<br/>Stored in .goalforge/board.sqlite"]:::main
+  C["Python Codex SDK Bridge<br/>openai-codex via uv<br/>service_name: GoalForge - project"]:::codex
+  WT["Task Worktree<br/>.goalforge/worktrees/TASK-ID<br/>Branch goalforge/task-id"]:::work
+  CH["Child Task Thread<br/>Fork or resume Codex conversation for this task"]:::task
+  R["Review, merge, handoff<br/>Validation, commit, merge, specsheet update"]:::done
+
+  U --> T --> A --> DB
+  A --> GF
+  GF --> PM
+  GF --> WT
+  GF --> C
+  A --> M
+  C --> M
+  M -->|"fork for new task"| CH
+  CH --> WT
+  WT --> R
+  R --> DB
+  R -->|"compact handoff"| M
+  R --> PM
+
+  classDef user fill:#17212d,stroke:#73d2ff,color:#e7eef7
+  classDef ui fill:#102033,stroke:#73d2ff,color:#e7eef7
+  classDef store fill:#1d2530,stroke:#c6b8ff,color:#e7eef7
+  classDef docs fill:#241f14,stroke:#ffd166,color:#fff7d6
+  classDef worker fill:#16251f,stroke:#8ee6a8,color:#e6fff1
+  classDef main fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+  classDef codex fill:#25192a,stroke:#c6b8ff,color:#f1eaff
+  classDef work fill:#1d2530,stroke:#9aa8b7,color:#e7eef7
+  classDef task fill:#2a2418,stroke:#ffd166,color:#fff7d6
+  classDef done fill:#25161b,stroke:#ff8fa3,color:#ffe6ec
+          </pre>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>2. Persistent Main Thread</h2>
+            <p>The main thread is not just an ID. GoalForge starts it, runs a tiny seed turn, then stores the thread ID. That seed turn gives Codex real history so task workers can fork from it.</p>
+          </div>
+          <div class="tag">Project memory</div>
+        </div>
+        <div class="grid-two">
+          <div class="mermaid-wrap">
+            <pre class="mermaid">
+sequenceDiagram
+  participant TUI as OpenTUI
+  participant API as GoalForge API
+  participant W as Worker.ensureMainThread
+  participant C as Codex SDK Bridge
+  participant DB as board.sqlite
+
+  TUI->>API: POST /api/main/ensure on startup
+  API->>DB: Read project main_thread_id
+  alt No stored main thread
+    API->>W: ensureMainThread()
+    W->>C: thread_start(cwd, model, sandbox)
+    C-->>W: threadId
+    W->>C: runTurn("GoalForge main thread seed")
+    C-->>W: seed turn completed
+    W->>DB: Store main_thread_id and summary
+  else Thread already stored
+    API-->>TUI: Reuse stored thread ID
+  end
+  API-->>TUI: Project memory panel updates
+            </pre>
+          </div>
+          <aside class="notes">
+            <strong>Why this matters</strong>
+            <ul>
+              <li>A raw new thread ID may not have a Codex rollout yet.</li>
+              <li>Forking an empty thread can fail with "no rollout found".</li>
+              <li>The seed turn creates a real conversation history.</li>
+              <li>The project thread stays pinned to the folder through <code>.goalforge/board.sqlite</code>.</li>
+              <li>Manual <code>codex continue</code> elsewhere should not replace GoalForge's saved main thread.</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>3. Task Worker Lifecycle</h2>
+            <p>Every task is treated like a small project branch. GoalForge prepares context, starts a child Codex task thread, records validation, reviews, merges, and sends a compact handoff back to memory.</p>
+          </div>
+          <div class="tag">Sub-agent run</div>
+        </div>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TD
+  N["New task<br/>Created from New Task or Plan Goal"]:::start
+  Q["Ready queue<br/>Task can be selected or scheduled"]:::state
+  W1["Prepare worktree<br/>Branch: goalforge/task-id<br/>Path: .goalforge/worktrees/TASK-ID"]:::work
+  CTX["Write context artifacts<br/>.goalforge/tasks/TASK-ID/task-packet.md<br/>context-manifest.json"]:::docs
+  LINE["Assign lineage<br/>parentThreadId = project main<br/>threadId = child task thread"]:::store
+  RUN["Run Codex worker turn<br/>Prompt says: you are a GoalForge worker<br/>Read manifest, respect AGENTS.md, stay in worktree"]:::codex
+  LIVE["Live supervision<br/>Watch streamed events<br/>Steer once on clear failures"]:::ui
+  TEST["Test engineer turn<br/>Validation-focused Codex pass"]:::codex
+  DIFF["Record diff evidence<br/>Touched files, git status, diff stat"]:::store
+  COMMIT["Commit worktree changes<br/>GoalForge creates commit"]:::work
+  REVIEW["Automatic review<br/>Approve or request changes"]:::review
+  MERGE["Merge branch<br/>Update specsheet and task handoff"]:::done
+  ABSORB["Absorb compact handoff<br/>Main thread learns durable facts"]:::main
+  BLOCK["Needs Input<br/>Only when real guidance is needed or review blocks"]:::blocked
+
+  N --> Q --> W1 --> CTX --> LINE --> RUN
+  RUN --> LIVE
+  RUN --> TEST --> DIFF --> COMMIT --> REVIEW
+  REVIEW -->|"approved"| MERGE --> ABSORB
+  REVIEW -->|"changes requested"| BLOCK
+  COMMIT -->|"commit failed"| BLOCK
+  BLOCK -->|"Add Input, then Start Selected"| RUN
+
+  classDef start fill:#102033,stroke:#73d2ff,color:#e7eef7
+  classDef state fill:#1d2530,stroke:#9aa8b7,color:#e7eef7
+  classDef work fill:#17212d,stroke:#73d2ff,color:#e7eef7
+  classDef docs fill:#241f14,stroke:#ffd166,color:#fff7d6
+  classDef store fill:#25192a,stroke:#c6b8ff,color:#f1eaff
+  classDef codex fill:#16251f,stroke:#8ee6a8,color:#e6fff1
+  classDef ui fill:#102033,stroke:#73d2ff,color:#e7eef7
+  classDef review fill:#2a2418,stroke:#ffd166,color:#fff7d6
+  classDef done fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+  classDef main fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+  classDef blocked fill:#301923,stroke:#ff8fa3,color:#ffe6ec
+          </pre>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>4. What Gets Stored Where</h2>
+            <p>The important split is simple: Codex owns opaque thread history. GoalForge owns project identity, board state, task state, docs, context packets, and UI labels.</p>
+          </div>
+          <div class="tag">State map</div>
+        </div>
+        <div class="mini-grid">
+          <div class="fact">
+            <b>.goalforge/board.sqlite</b>
+            <p>Stores task status, run state, events, queued messages, main thread ID, child thread IDs, active turn IDs, touched paths, and blocked reasons.</p>
+          </div>
+          <div class="fact">
+            <b>Codex local sessions</b>
+            <p>Stores transcript and rollout history. GoalForge treats thread IDs as opaque and resumes or forks through app-server/SDK calls.</p>
+          </div>
+          <div class="fact">
+            <b>Project files</b>
+            <p><code>AGENTS.md</code>, <code>WORKFLOW.md</code>, and <code>project-specsheet.md</code> carry durable project behavior and handoffs.</p>
+          </div>
+          <div class="fact">
+            <b>Task artifacts</b>
+            <p><code>.goalforge/tasks/TASK-ID/</code> stores the task packet and manifest that tell workers exactly what context to read.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>5. Missing Session Recovery</h2>
+            <p>If Codex says a saved rollout or thread is missing, GoalForge should not ask the user for project input. It rebuilds the project memory thread, clears stale child lineage, and retries.</p>
+          </div>
+          <div class="tag">Failure path</div>
+        </div>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart LR
+  E["Codex error<br/>no rollout found<br/>thread not found"]:::bad
+  UI["OpenTUI text<br/>Saved Codex session unavailable<br/>Not asking for project input"]:::ui
+  W["Worker recovery<br/>Treat as infrastructure state"]:::worker
+  F["Start fresh main thread<br/>Run seed turn immediately"]:::main
+  DB["Update board.sqlite<br/>mainThreadId = fresh seeded thread"]:::store
+  CLR["Clear stale child task thread<br/>Keep task and worktree"]:::store
+  R["Retry openTaskSession<br/>Fork from fresh seeded main"]:::codex
+  GO["Task continues<br/>Status can move out of Needs Input"]:::done
+
+  E --> UI
+  E --> W --> F --> DB --> CLR --> R --> GO
+
+  classDef bad fill:#301923,stroke:#ff8fa3,color:#ffe6ec
+  classDef ui fill:#102033,stroke:#73d2ff,color:#e7eef7
+  classDef worker fill:#16251f,stroke:#8ee6a8,color:#e6fff1
+  classDef main fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+  classDef store fill:#25192a,stroke:#c6b8ff,color:#f1eaff
+  classDef codex fill:#2a2418,stroke:#ffd166,color:#fff7d6
+  classDef done fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+          </pre>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <h2>6. Sub-agent Contract</h2>
+            <p>The child worker acts like normal Codex in a worktree, but the prompt and manifest make its role explicit. Repo-level <code>AGENTS.md</code> remains the durable instruction surface.</p>
+          </div>
+          <div class="tag">Worker identity</div>
+        </div>
+        <div class="mermaid-wrap">
+          <pre class="mermaid">
+flowchart TB
+  ROOT["Root project AGENTS.md<br/>Human and repo rules"]:::docs
+  WF["WORKFLOW.md<br/>GoalForge run, review, merge rules"]:::docs
+  SPEC["project-specsheet.md<br/>Durable feature notes and handoffs"]:::docs
+  PACKET["Task packet<br/>Task description, acceptance criteria, board memory"]:::packet
+  MANIFEST["Context manifest<br/>Required paths and worker rules"]:::packet
+  PROMPT["Worker prompt<br/>You are a GoalForge Codex worker"]:::codex
+  CHILD["Child Codex task thread<br/>Implementation, validation, final handoff"]:::task
+  MAIN["Main thread<br/>Receives compact handoff after merge"]:::main
+
+  ROOT --> PROMPT
+  WF --> PROMPT
+  SPEC --> PACKET
+  PACKET --> MANIFEST
+  MANIFEST --> PROMPT
+  PROMPT --> CHILD
+  CHILD --> MAIN
+
+  classDef docs fill:#241f14,stroke:#ffd166,color:#fff7d6
+  classDef packet fill:#1d2530,stroke:#c6b8ff,color:#f1eaff
+  classDef codex fill:#16251f,stroke:#8ee6a8,color:#e6fff1
+  classDef task fill:#2a2418,stroke:#ffd166,color:#fff7d6
+  classDef main fill:#11261e,stroke:#8ee6a8,color:#e6fff1
+          </pre>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

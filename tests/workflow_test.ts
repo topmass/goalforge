@@ -41,3 +41,20 @@ Keep the local Kanban as the tracker.
   assertEquals(workflow.hooks.after_run[0].command, "printf done");
   assertStringIncludes(workflow.instructions, "Custom Workflow");
 });
+
+Deno.test("workflow parser reads authority policy with conservative defaults", () => {
+  const defaults = parseWorkflow("# No frontmatter\n");
+  assertEquals(defaults.authority.publish, true);
+  assertEquals(defaults.authority.maxTriageRetries, 2);
+
+  const custom = parseWorkflow(`---
+version: 1
+authority:
+  publish: false
+  max_triage_retries: 0
+---
+# Custom
+`);
+  assertEquals(custom.authority.publish, false);
+  assertEquals(custom.authority.maxTriageRetries, 0);
+});

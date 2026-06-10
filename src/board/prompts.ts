@@ -32,6 +32,17 @@ Board states:
 - Inbox: cannot proceed without new information or dependency resolution.
 - Done: reviewed and accepted.
 
+Loop states:
+- Queued: waiting for dependencies or dispatch.
+- Planning: GoalForge is preparing context, worktree, and task packet.
+- Working: a Codex task worker is implementing.
+- Testing: the test engineer is verifying evidence.
+- Repairing: queued input or failed evidence is being addressed.
+- Reviewing: GoalForge is reviewing, committing, or merging.
+- Remembering: durable project memory is being updated.
+- Blocked: the TUI must show the exact needed input or blocker.
+- Done: the task is merged and absorbed into memory.
+
 Agents report workpad notes in their final handoff. The daemon records those notes on the board. If an agent is busy, incoming requests are queued as board events instead of interrupting its current task.
 `,
   "worker.md": `# Worker Role

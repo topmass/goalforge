@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import { BoardStore, readConfig, updateConfig } from "../src/board/store.ts";
+import { summarizeGoalProgress } from "../src/board/goal_progress.ts";
 
 Deno.test("init creates local runtime files and prompt templates", () => {
   const root = Deno.makeTempDirSync();
@@ -86,6 +87,174 @@ Deno.test("planned goals create multiple prioritized tasks", () => {
   }
 });
 
+Deno.test("planned goals store a completion contract", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { goal } = store.createGoalWithTasks("Build reliable automation", [
+      {
+        title: "Add control plane",
+        description: "Implement the control plane.",
+        acceptanceCriteria: "- Control plane works.",
+        priority: 300,
+      },
+    ], {
+      completionContract: "- Control plane works.\n- Full verification passes.",
+    });
+
+    assertStringIncludes(goal.completionContract, "Full verification passes.");
+    assertStringIncludes(store.getGoal(goal.id).completionContract, "Control plane works.");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("tasks can be added to an existing open goal", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { goal, task } = store.createGoal("Build repairable goal");
+    const added = store.addTasksToGoal(goal.id, [{
+      title: "Collect missing proof",
+      description: "Collect evidence.",
+      acceptanceCriteria: "- Evidence recorded.",
+      priority: 50,
+      dependsOn: [task.id],
+    }]);
+
+    assertEquals(added.goal.id, goal.id);
+    assertEquals(added.tasks[0].id, "TASK-2");
+    assertEquals(added.tasks[0].goalId, goal.id);
+    assertEquals(added.tasks[0].dependencyIds, [task.id]);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("goals close only after completion evidence is ready", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { goal, task } = store.createGoal("Close proven goal");
+
+    assertThrows(
+      () => store.closeGoal(goal.id),
+      Error,
+      "not ready to close",
+    );
+
+    store.requestTransition(task.id, "in_progress");
+    store.updateTaskValidation(
+      task.id,
+      [
+        "Turn status: completed",
+        "Test turn status: completed",
+        "Discovered verification gates:",
+        "- Diff inspection: git diff --stat && git diff --check - Every task needs a basic changed-file and whitespace sanity check.",
+        "",
+        "Verification verdict:",
+        "VERIFICATION_PASSED",
+        "- Focused validation passed with recorded proof.",
+        "Commit: abc123",
+        "Git status:",
+        "clean",
+        "GoalForge review: APPROVED",
+      ].join("\n"),
+    );
+    store.updateTaskCard(task.id, "TASK-1 complete.");
+    store.updateTaskHandoff(task.id, "Validated and absorbed.");
+    store.requestTransition(task.id, "review");
+    store.requestTransition(task.id, "done");
+
+    const closed = store.closeGoal(goal.id, "All proof present.");
+
+    assertEquals(closed.goal.status, "closed");
+    assertEquals(closed.goal.closureSummary, "All proof present.");
+    assertEquals(summarizeGoalProgress(store.getBoard()), null);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("task dependencies block dispatch until upstream work is done", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { tasks } = store.createGoalWithTasks("Plan dependent work", [
+      {
+        title: "Build model",
+        description: "Implement the model.",
+        acceptanceCriteria: "- Model works.",
+        priority: 100,
+        verificationPlan: "- Run model tests.",
+      },
+      {
+        title: "Build UI",
+        description: "Implement the UI.",
+        acceptanceCriteria: "- UI works.",
+        priority: 300,
+        dependsOn: ["Build model"],
+        riskLevel: "high",
+        verificationPlan: "- Run UI smoke test.",
+      },
+    ]);
+
+    assertEquals(tasks[1].dependencyIds, ["TASK-1"]);
+    assertEquals(tasks[1].riskLevel, "high");
+    assertEquals(store.findDispatchableTask()?.id, "TASK-1");
+    store.updateTaskValidation(tasks[0].id, "Validation evidence.");
+    store.requestTransition(tasks[0].id, "in_progress", "test", "claim");
+    store.requestTransition(tasks[0].id, "review", "test", "proof");
+    store.requestTransition(tasks[0].id, "done", "test", "complete");
+    assertEquals(store.findDispatchableTask()?.id, "TASK-2");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("unresolved conflict signals block dispatch until source task is done", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { tasks } = store.createGoalWithTasks("Plan conflicting work", [
+      {
+        title: "Edit shared API",
+        description: "Change shared API.",
+        acceptanceCriteria: "- API works.",
+        priority: 100,
+      },
+      {
+        title: "Edit shared UI",
+        description: "Change shared UI.",
+        acceptanceCriteria: "- UI works.",
+        priority: 300,
+      },
+    ]);
+    store.addConflictSignal(tasks[1].id, "TASK-1 also touches src/shared.ts.");
+    store.recordSupervisorDecision(tasks[1].id, "Paused because TASK-1 owns src/shared.ts.");
+    assertEquals(store.findDispatchableTask()?.id, "TASK-1");
+    assertStringIncludes(store.getTask(tasks[1].id).supervisorDecision, "Paused because TASK-1");
+
+    store.updateTaskValidation(tasks[0].id, "Validation evidence.");
+    store.requestTransition(tasks[0].id, "in_progress", "test", "claim");
+    store.requestTransition(tasks[0].id, "review", "test", "proof");
+    store.requestTransition(tasks[0].id, "done", "test", "complete");
+    assertEquals(store.findDispatchableTask()?.id, "TASK-2");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
 Deno.test("transition validation prevents review without evidence", () => {
   const root = Deno.makeTempDirSync();
   const store = new BoardStore(root);
@@ -123,6 +292,98 @@ Deno.test("running runs prevent duplicate task claims", () => {
       Error,
       "already has a running agent",
     );
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("running task can receive a durable stop request", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Stop a running task");
+    const run = store.createRun(task.id, "worker");
+    const event = store.requestTaskStop(task.id, "User stopped the task.");
+    const stoppedRun = store.getRun(run.id);
+    const status = store.getAgentStatus(run.id);
+
+    assertEquals(event.kind, "stop");
+    assertEquals(store.isRunStopRequested(run.id), true);
+    assertEquals(Boolean(stoppedRun.stopRequestedAt), true);
+    assertEquals(status?.headline, "Stop requested.");
+    assertStringIncludes(store.getTask(task.id).nextAction, "stopping");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("agent status tracks live worker phase and summary", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Track live agent state");
+    const run = store.createRun(task.id, "worker");
+    let status = store.getAgentStatus(run.id);
+    assertEquals(status?.phase, "starting");
+    assertEquals(status?.interruptible, false);
+
+    status = store.upsertAgentStatus({
+      taskId: task.id,
+      runId: run.id,
+      threadId: "thread-task",
+      turnId: "turn-1",
+      phase: "testing",
+      headline: "Running validation.",
+      detail: "deno task test is running.",
+      risk: "none",
+      interruptible: true,
+    });
+    assertEquals(status.threadId, "thread-task");
+    assertEquals(status.turnId, "turn-1");
+    assertEquals(status.phase, "testing");
+    assertEquals(status.interruptible, true);
+    assertEquals(store.getBoard().agentStatuses.length, 1);
+    assertEquals(store.listActiveAgentStatuses()[0].headline, "Running validation.");
+
+    store.finishRun(run.id, "completed");
+    status = store.getAgentStatus(run.id);
+    assertEquals(status?.phase, "done");
+    assertEquals(status?.interruptible, false);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("agent status marks stale active workers", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Mark stale workers");
+    const run = store.createRun(task.id, "worker");
+    store.upsertAgentStatus({
+      taskId: task.id,
+      runId: run.id,
+      phase: "running",
+      headline: "Working.",
+      detail: "Codex is active.",
+      risk: "none",
+      interruptible: true,
+    });
+    store.db.prepare("UPDATE agent_status SET last_seen_at = ? WHERE run_id = ?").run(
+      new Date(Date.now() - 10_000).toISOString(),
+      run.id,
+    );
+    const events = store.markStaleAgentStatuses(1);
+    assertEquals(events.length, 1);
+    const status = store.getAgentStatus(run.id);
+    assertEquals(status?.risk, "stale");
+    assertStringIncludes(events[0].message, "No recent Codex activity");
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });
@@ -185,6 +446,67 @@ Deno.test("started stuck tasks can be deleted from the board", () => {
   }
 });
 
+Deno.test("done tasks can be removed from the board", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Remove this completed goal");
+    store.updateTaskValidation(task.id, "Validated.");
+    store.requestTransition(task.id, "in_progress", "test", "started");
+    store.requestTransition(task.id, "review", "test", "ready");
+    store.requestTransition(task.id, "done", "test", "complete");
+    store.deleteTask(task.id);
+    assertEquals(store.getBoard().tasks.length, 0);
+    assertThrows(
+      () => {
+        store.getTask(task.id);
+      },
+      Error,
+      "Task not found",
+    );
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("completed tasks can be cleared in bulk", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { tasks } = store.createGoalWithTasks("Clean completed work", [
+      {
+        title: "Completed item",
+        description: "Complete this item.",
+        acceptanceCriteria: "Done.",
+        priority: 100,
+      },
+      {
+        title: "Ready item",
+        description: "Leave this item ready.",
+        acceptanceCriteria: "Still ready.",
+        priority: 90,
+      },
+    ]);
+    store.updateTaskValidation(tasks[0].id, "Validated.");
+    store.requestTransition(tasks[0].id, "in_progress", "test", "started");
+    store.requestTransition(tasks[0].id, "review", "test", "ready");
+    store.requestTransition(tasks[0].id, "done", "test", "complete");
+
+    const result = store.clearDoneTasks();
+    const board = store.getBoard();
+    assertEquals(result.count, 1);
+    assertEquals(board.tasks.length, 1);
+    assertEquals(board.tasks[0].id, tasks[1].id);
+    assertStringIncludes(result.event.message, "Cleared 1 completed task");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
 Deno.test("events keep readable activity and raw protocol payloads", () => {
   const root = Deno.makeTempDirSync();
   const store = new BoardStore(root);
@@ -212,6 +534,56 @@ Deno.test("queued messages appear on the board and can be processed", () => {
     assertEquals(pending.length, 1);
     store.markMessagesProcessed(pending.map((message) => message.id));
     assertEquals(store.listPendingMessages(task.id).length, 0);
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("project main thread state is stored on the board", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    assertEquals(store.getProjectState().mainThreadId, null);
+    store.setMainThread("thread-main", "Project context lives here.");
+    const state = store.getBoard().projectState;
+    assertEquals(state.mainThreadId, "thread-main");
+    assertStringIncludes(state.mainThreadSummary, "Project context");
+    store.resetMainThread("thread-reset", "Fresh compact context.");
+    assertEquals(store.getProjectState().mainThreadId, "thread-reset");
+    assertEquals(typeof store.getProjectState().mainThreadResetAt, "string");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("tasks store thread lineage, compact cards, handoffs, and conflict signals", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Track child task memory");
+    store.assignThreadLineage(task.id, "thread-main", "thread-child");
+    store.updateTaskActiveTurn(task.id, "implementation");
+    store.updateTaskContextManifest(
+      task.id,
+      `${root}/.goalforge/tasks/TASK-1/context-manifest.json`,
+    );
+    store.updateTaskTouchedPaths(task.id, ["src/a.ts", "src/a.ts", "src/b.ts"]);
+    store.updateTaskCard(task.id, "TASK-1 status: in_progress");
+    store.updateTaskHandoff(task.id, "TASK-1 done.");
+    store.addConflictSignal(task.id, "TASK-2 also touches src/a.ts.");
+
+    const updated = store.getTask(task.id);
+    assertEquals(updated.parentThreadId, "thread-main");
+    assertEquals(updated.threadId, "thread-child");
+    assertEquals(updated.activeTurnId, "implementation");
+    assertEquals(updated.touchedPaths, ["src/a.ts", "src/b.ts"]);
+    assertEquals(updated.conflictSignals, ["TASK-2 also touches src/a.ts."]);
+    assertStringIncludes(updated.taskCard, "TASK-1");
+    assertStringIncludes(updated.handoffSummary, "done");
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });

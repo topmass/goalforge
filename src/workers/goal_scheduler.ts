@@ -105,7 +105,14 @@ function buildSchedulerPrompt(
     title: task.title,
     description: task.description,
     priority: task.priority,
+    status: task.status,
+    loopPhase: task.loopPhase,
+    dependencies: task.dependencyIds,
+    touchedPaths: task.touchedPaths,
+    conflictSignals: task.conflictSignals,
+    riskLevel: task.riskLevel,
     acceptanceCriteria: task.acceptanceCriteria,
+    verificationPlan: task.verificationPlan,
     workpad: task.workpad,
   }));
 

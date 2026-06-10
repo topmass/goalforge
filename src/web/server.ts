@@ -1,5 +1,11 @@
 import path from "node:path";
-import { BoardStore, readConfig, ReasoningEffort, updateConfig } from "../board/store.ts";
+import {
+  BoardStore,
+  normalizeExternalAgentState,
+  readConfig,
+  ReasoningEffort,
+  updateConfig,
+} from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
@@ -8,6 +14,7 @@ import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
+import { buildTaskCard, ensureProjectKnowledgeFiles } from "../workers/task_memory.ts";
 import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalForgeServer {
@@ -58,6 +65,14 @@ export function startServer(
     broadcast("activity", event);
     broadcastBoard();
   };
+  const supervisorTimer = setInterval(() => {
+    for (const event of store.markStaleAgentStatuses(120_000)) {
+      broadcastActivity(event);
+    }
+    if (store.pruneExternalAgents(300_000) > 0) {
+      broadcastBoard();
+    }
+  }, 15_000);
   const startQueue = () => {
     if (queueRunning) {
       return;
@@ -131,12 +146,98 @@ export function startServer(
             queueRunning,
             config: readConfig(normalizedRoot),
             workflow: readWorkflow(normalizedRoot),
+            projectState: board.projectState,
             runningRuns: board.runs.filter((run) => run.status === "running"),
-            dispatchableTasks: board.tasks.filter((task) =>
-              task.status === "ready" || task.status === "inbox"
+            activeAgentStatuses: board.agentStatuses.filter((status) =>
+              board.runs.some((run) => run.id === status.runId && run.status === "running")
             ),
+            dispatchableTasks: store.listDispatchableTasks(50),
             needsInputTasks: board.tasks.filter((task) => task.status === "blocked"),
           });
+        }
+
+        if (url.pathname === "/api/agents/report" && request.method === "POST") {
+          const body = await readJson<{
+            id?: string;
+            agent?: string;
+            state?: string;
+            headline?: string;
+            cwd?: string;
+            sessionId?: string;
+          }>(request);
+          const agent = body.agent?.trim() ?? "";
+          if (!agent) {
+            return json({ error: "agent is required." }, 400);
+          }
+          const cwd = body.cwd?.trim() ?? "";
+          if (
+            cwd && path.resolve(cwd) !== normalizedRoot &&
+            !path.resolve(cwd).startsWith(`${normalizedRoot}${path.sep}`)
+          ) {
+            return json({ ok: true, ignored: true, reason: "cwd outside project root" });
+          }
+          const id = body.id?.trim() || body.sessionId?.trim() || agent;
+          const result = store.reportExternalAgent({
+            id: `${agent}:${id}`,
+            agent,
+            state: normalizeExternalAgentState(body.state),
+            headline: body.headline?.trim(),
+            cwd,
+            sessionId: body.sessionId?.trim() || undefined,
+          });
+          if (result.changed) {
+            broadcastActivity(
+              store.appendEvent(
+                null,
+                null,
+                "external",
+                "agent",
+                `${agent} is ${result.status.state}${
+                  result.status.headline ? `: ${result.status.headline}` : "."
+                }`,
+              ),
+            );
+          } else {
+            broadcastBoard();
+          }
+          return json({ ok: true, status: result.status });
+        }
+
+        if (url.pathname === "/api/main" && request.method === "GET") {
+          return json(store.getProjectState());
+        }
+
+        if (url.pathname === "/api/main/ensure" && request.method === "POST") {
+          ensureProjectKnowledgeFiles(normalizedRoot);
+          const worker = new GoalForgeWorker(normalizedRoot, store, {
+            onEvent: broadcastActivity,
+            createCodexClient: options.createCodexClient,
+          });
+          await worker.ensureMainThread();
+          broadcastBoard();
+          return json(store.getProjectState());
+        }
+
+        if (url.pathname === "/api/main/reset" && request.method === "POST") {
+          ensureProjectKnowledgeFiles(normalizedRoot);
+          const body = await readJson<{ threadId?: string; summary?: string }>(request);
+          const state = store.resetMainThread(
+            body.threadId?.trim() || `manual-main-${crypto.randomUUID()}`,
+            body.summary?.trim() ||
+              "Project main thread reset. Seed future child tasks from project docs and board memory.",
+          );
+          broadcastBoard();
+          return json(state);
+        }
+
+        if (url.pathname === "/api/main/compact" && request.method === "POST") {
+          const worker = new GoalForgeWorker(normalizedRoot, store, {
+            onEvent: broadcastActivity,
+            createCodexClient: options.createCodexClient,
+          });
+          await worker.compactMainThread();
+          broadcastBoard();
+          return json(store.getProjectState());
         }
 
         if (url.pathname === "/api/config" && request.method === "PATCH") {
@@ -179,8 +280,65 @@ export function startServer(
               broadcastActivity(activity);
             },
           });
-          const drafts = await planner.plan(text);
-          const result = store.createGoalWithTasks(text, drafts);
+          const plan = await planner.planGoal(text);
+          const result = store.createGoalWithTasks(text, plan.tasks, {
+            completionContract: plan.completionContract,
+          });
+          broadcastBoard();
+          return json(result, 201);
+        }
+
+        if (url.pathname === "/api/goals/build" && request.method === "POST") {
+          const body = await readJson<{ text?: string }>(request);
+          const text = body.text?.trim() ?? "";
+          if (!text) {
+            return json({ error: "Goal text is required." }, 400);
+          }
+          const planner = new GoalPlanner(normalizedRoot, {
+            projectMemory: buildProjectMemory(store),
+            createCodexClient: options.createCodexClient,
+            onEvent: (event) => {
+              const activity = store.appendAgentEvent(event);
+              broadcastActivity(activity);
+            },
+          });
+          const plan = await planner.planGoal(text);
+          const result = store.createGoalWithTasks(text, plan.tasks, {
+            completionContract: plan.completionContract,
+          });
+          broadcastBoard();
+          startQueue();
+          return json({ ...result, running: queueRunning }, 201);
+        }
+
+        const closeGoalMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/close$/);
+        if (closeGoalMatch && request.method === "POST") {
+          const goalId = decodeURIComponent(closeGoalMatch[1]);
+          const body = await readJson<{ summary?: string }>(request);
+          const result = store.closeGoal(goalId, body.summary ?? "");
+          broadcastActivity(result.event);
+          broadcastBoard();
+          return json({ ok: true, ...result });
+        }
+
+        if (url.pathname === "/api/tasks" && request.method === "POST") {
+          const body = await readJson<{
+            title?: string;
+            description?: string;
+            acceptanceCriteria?: string;
+            priority?: number;
+          }>(request);
+          const title = body.title?.trim() ?? "";
+          if (!title) {
+            return json({ error: "Task title is required." }, 400);
+          }
+          const result = store.createGoalWithTasks(title, [{
+            title,
+            description: body.description?.trim() || title,
+            acceptanceCriteria: body.acceptanceCriteria?.trim() ||
+              `Complete and validate: ${title}`,
+            priority: Number.isInteger(body.priority) ? Number(body.priority) : 100,
+          }]);
           broadcastBoard();
           return json(result, 201);
         }
@@ -198,8 +356,10 @@ export function startServer(
               broadcastActivity(activity);
             },
           });
-          const drafts = await planner.plan(text);
-          const result = store.createGoalWithTasks(text, drafts);
+          const plan = await planner.planGoal(text);
+          const result = store.createGoalWithTasks(text, plan.tasks, {
+            completionContract: plan.completionContract,
+          });
           broadcastBoard();
           return json(result, 201);
         }
@@ -223,6 +383,12 @@ export function startServer(
           return json({ ok: true, running: queueRunning });
         }
 
+        if (url.pathname === "/api/tasks/done" && request.method === "DELETE") {
+          const result = store.clearDoneTasks();
+          broadcastActivity(result.event);
+          return json({ ok: true, count: result.count, board: store.getBoard() });
+        }
+
         const runMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/run$/);
         if (runMatch && request.method === "POST") {
           const taskId = decodeURIComponent(runMatch[1]);
@@ -237,6 +403,14 @@ export function startServer(
             });
           });
           return json({ ok: true, taskId });
+        }
+
+        const stopMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/stop$/);
+        if (stopMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(stopMatch[1]);
+          const event = store.requestTaskStop(taskId, "Stop requested from the GoalForge TUI.");
+          broadcastActivity(event);
+          return json({ ok: true, taskId, event });
         }
 
         const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
@@ -272,6 +446,55 @@ export function startServer(
           const event = store.enqueueMessage(taskId, body.role?.trim() || "user", message);
           broadcastActivity(event);
           return json({ ok: true, event });
+        }
+
+        const steerMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/steer$/);
+        if (steerMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(steerMatch[1]);
+          const body = await readJson<{ message?: string }>(request);
+          const message = body.message?.trim() ?? "";
+          if (!message) {
+            return json({ error: "message is required" }, 400);
+          }
+          const worker = new GoalForgeWorker(normalizedRoot, store, {
+            onEvent: broadcastActivity,
+            createCodexClient: options.createCodexClient,
+          });
+          const event = await worker.steerTask(taskId, message);
+          broadcastActivity(event);
+          return json({ ok: true, event });
+        }
+
+        const cardMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/card$/);
+        if (cardMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(cardMatch[1]);
+          const task = store.getTask(taskId);
+          const updated = store.updateTaskCard(task.id, buildTaskCard(task));
+          broadcastBoard();
+          return json({ task: updated, card: updated.taskCard });
+        }
+
+        const threadMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/thread$/);
+        if (threadMatch && request.method === "GET") {
+          const taskId = decodeURIComponent(threadMatch[1]);
+          const worker = new GoalForgeWorker(normalizedRoot, store, {
+            onEvent: broadcastActivity,
+            createCodexClient: options.createCodexClient,
+          });
+          const thread = await worker.readTaskThread(taskId);
+          return json({ taskId, thread });
+        }
+
+        const compactTaskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/compact-thread$/);
+        if (compactTaskMatch && request.method === "POST") {
+          const taskId = decodeURIComponent(compactTaskMatch[1]);
+          const worker = new GoalForgeWorker(normalizedRoot, store, {
+            onEvent: broadcastActivity,
+            createCodexClient: options.createCodexClient,
+          });
+          await worker.compactTaskThread(taskId);
+          broadcastBoard();
+          return json({ ok: true, taskId });
         }
 
         const mergeMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/merge$/);
@@ -411,8 +634,17 @@ export function startServer(
 
   return {
     url: `http://127.0.0.1:${port}`,
-    shutdown: () => abort.abort(),
-    finished: server.finished.then(() => store.close()).catch(() => store.close()),
+    shutdown: () => {
+      clearInterval(supervisorTimer);
+      abort.abort();
+    },
+    finished: server.finished.then(() => {
+      clearInterval(supervisorTimer);
+      store.close();
+    }).catch(() => {
+      clearInterval(supervisorTimer);
+      store.close();
+    }),
   };
 }
 

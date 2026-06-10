@@ -30,6 +30,14 @@ export function runsPath(root: string): string {
   return runtimePath(root, "runs");
 }
 
+export function contextPath(root: string, ...parts: string[]): string {
+  return runtimePath(root, "context", ...parts);
+}
+
+export function taskArtifactsPath(root: string, ...parts: string[]): string {
+  return runtimePath(root, "tasks", ...parts);
+}
+
 export function staticPath(root: string, ...parts: string[]): string {
   return path.join(root, "static", ...parts);
 }

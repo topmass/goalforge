@@ -19,6 +19,12 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1.0.19"
-    ]
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:@opentui/core@0.3.0",
+        "npm:@types/node@24.0.0"
+      ]
+    }
   }
 }

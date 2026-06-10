@@ -9,6 +9,28 @@ export const TASK_STATUSES = [
 
 export type TaskStatus = typeof TASK_STATUSES[number];
 
+export const TASK_LOOP_PHASES = [
+  "queued",
+  "planning",
+  "working",
+  "testing",
+  "repairing",
+  "reviewing",
+  "remembering",
+  "done",
+  "blocked",
+] as const;
+
+export type TaskLoopPhase = typeof TASK_LOOP_PHASES[number];
+
+export type TaskRiskLevel = "low" | "medium" | "high";
+
+export type TaskKind = "code" | "ops";
+
+export const OPS_ACTIONS = ["publish"] as const;
+
+export type OpsAction = typeof OPS_ACTIONS[number];
+
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   inbox: "Inbox",
   ready: "Ready",
@@ -21,6 +43,10 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 export interface Goal {
   id: string;
   text: string;
+  completionContract: string;
+  status: "open" | "closed";
+  closedAt: string | null;
+  closureSummary: string;
   createdAt: string;
 }
 
@@ -30,14 +56,35 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  kind: TaskKind;
+  opsAction: OpsAction | null;
   priority: number;
   branchName: string | null;
   worktreePath: string | null;
+  parentThreadId: string | null;
   threadId: string | null;
+  activeTurnId: string | null;
+  contextManifestPath: string | null;
+  dependencyIds: string[];
+  riskLevel: TaskRiskLevel;
+  verificationPlan: string;
+  loopPhase: TaskLoopPhase;
+  loopAttempt: number;
+  currentGate: string;
+  verificationSummary: string;
+  nextAction: string;
+  needsInputPrompt: string | null;
+  supervisorDecision: string;
+  taskCard: string;
+  handoffSummary: string;
+  touchedPaths: string[];
+  conflictSignals: string[];
   workpad: string;
   acceptanceCriteria: string;
   validation: string;
   blockedReason: string | null;
+  triageAttempts: number;
+  blockedFingerprint: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +95,11 @@ export interface TaskDraft {
   acceptanceCriteria: string;
   priority: number;
   workpad?: string;
+  dependsOn?: string[];
+  riskLevel?: TaskRiskLevel;
+  verificationPlan?: string;
+  kind?: TaskKind;
+  opsAction?: OpsAction;
 }
 
 export interface Run {
@@ -57,6 +109,57 @@ export interface Run {
   status: "running" | "completed" | "failed";
   startedAt: string;
   finishedAt: string | null;
+  stopRequestedAt: string | null;
+}
+
+export type AgentPhase =
+  | "starting"
+  | "planning"
+  | "reading"
+  | "editing"
+  | "running"
+  | "testing"
+  | "reviewing"
+  | "merging"
+  | "blocked"
+  | "done";
+
+export type AgentRisk =
+  | "none"
+  | "test_failed"
+  | "conflict"
+  | "stale"
+  | "needs_user"
+  | "session";
+
+export interface AgentStatus {
+  taskId: string;
+  runId: string;
+  threadId: string | null;
+  turnId: string | null;
+  phase: AgentPhase;
+  headline: string;
+  detail: string;
+  risk: AgentRisk;
+  lastSeenAt: string;
+  lastSupervisorAction: string | null;
+  needsInputPrompt: string | null;
+  interruptible: boolean;
+}
+
+export const EXTERNAL_AGENT_STATES = ["working", "blocked", "done", "idle"] as const;
+
+export type ExternalAgentState = typeof EXTERNAL_AGENT_STATES[number];
+
+export interface ExternalAgentStatus {
+  id: string;
+  agent: string;
+  state: ExternalAgentState;
+  headline: string;
+  cwd: string;
+  sessionId: string | null;
+  startedAt: string;
+  lastSeenAt: string;
 }
 
 export interface QueuedMessage {
@@ -83,13 +186,23 @@ export type ActivityEventInput = Omit<ActivityEvent, "id" | "createdAt" | "rawJs
   raw?: unknown;
 };
 
+export interface ProjectState {
+  mainThreadId: string | null;
+  mainThreadCreatedAt: string | null;
+  mainThreadResetAt: string | null;
+  mainThreadSummary: string;
+}
+
 export interface BoardSnapshot {
   goals: Goal[];
   tasks: Task[];
   runs: Run[];
+  agentStatuses: AgentStatus[];
+  externalAgents: ExternalAgentStatus[];
   messages: QueuedMessage[];
   events: ActivityEvent[];
   statuses: { id: TaskStatus; label: string }[];
+  projectState: ProjectState;
 }
 
 export interface TransitionResult {

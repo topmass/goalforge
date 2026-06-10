@@ -2,26 +2,40 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import {
   configPath,
+  contextPath,
   databasePath,
   normalizeRoot,
   promptsPath,
   runsPath,
   runtimePath,
+  taskArtifactsPath,
   worktreesPath,
 } from "../paths.ts";
 import { PROMPTS } from "./prompts.ts";
 import { ensureWorkflow } from "../workflow/workflow.ts";
+import { summarizeGoalProgress } from "./goal_progress.ts";
 import {
   ActivityEvent,
   ActivityEventInput,
+  AgentPhase,
+  AgentRisk,
+  AgentStatus,
   BoardSnapshot,
+  EXTERNAL_AGENT_STATES,
+  ExternalAgentState,
+  ExternalAgentStatus,
   Goal,
+  OPS_ACTIONS,
+  OpsAction,
+  ProjectState,
   QueuedMessage,
   Run,
   Task,
   TASK_STATUS_LABELS,
   TASK_STATUSES,
   TaskDraft,
+  TaskLoopPhase,
+  TaskRiskLevel,
   TaskStatus,
   TransitionResult,
 } from "./types.ts";
@@ -33,7 +47,7 @@ export interface GoalForgeConfig {
   port: number;
   workerMode: "codex";
   maxConcurrentAgents: number;
-  codexTransport: "stdio";
+  codexTransport: "sdk";
   boardStates: readonly TaskStatus[];
   model: string;
   reasoningEffort: ReasoningEffort;
@@ -83,7 +97,11 @@ export class BoardStore {
     return { goal: result.goal, task: result.tasks[0] };
   }
 
-  createGoalWithTasks(text: string, drafts: TaskDraft[]): { goal: Goal; tasks: Task[] } {
+  createGoalWithTasks(
+    text: string,
+    drafts: TaskDraft[],
+    options: { completionContract?: string } = {},
+  ): { goal: Goal; tasks: Task[] } {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Goal text is required.");
@@ -94,27 +112,50 @@ export class BoardStore {
     const goalId = this.nextHumanId("GOAL", "goals");
 
     this.db.prepare(
-      "INSERT INTO goals (id, text, created_at) VALUES (?, ?, ?)",
-    ).run(goalId, trimmed, now);
+      "INSERT INTO goals (id, text, completion_contract, status, closure_summary, created_at) VALUES (?, ?, ?, 'open', '', ?)",
+    ).run(goalId, trimmed, normalizeCompletionContract(trimmed, taskDrafts, options), now);
+
+    const existingTaskCount = this.taskCount();
+    const planned = taskDrafts.map((draft, index) => ({
+      draft,
+      taskId: `TASK-${existingTaskCount + index + 1}`,
+    }));
+    const titleToId = new Map(
+      planned.map(({ draft, taskId }) => [normalizeTitle(draft.title), taskId]),
+    );
 
     const tasks: Task[] = [];
-    for (const draft of taskDrafts) {
-      const taskId = this.nextHumanId("TASK", "tasks");
+    for (const { draft, taskId } of planned) {
+      const dependencyIds = normalizeDependencies(draft.dependsOn, titleToId);
       this.db.prepare(`
         INSERT INTO tasks (
-          id, goal_id, title, description, status, priority, branch_name, worktree_path,
-          thread_id, workpad, acceptance_criteria, validation, blocked_reason, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, goal_id, title, description, status, kind, ops_action, priority, branch_name, worktree_path,
+          thread_id, dependency_ids_json, risk_level, verification_plan, loop_phase, loop_attempt,
+          current_gate, verification_summary, next_action, needs_input_prompt, supervisor_decision, workpad,
+          acceptance_criteria, validation, blocked_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         taskId,
         goalId,
         normalizeTitle(draft.title),
         draft.description.trim() || trimmed,
         "ready",
+        draft.kind === "ops" ? "ops" : "code",
+        draft.kind === "ops" ? normalizeOpsAction(draft.opsAction) : null,
         normalizePriority(draft.priority),
         null,
         null,
         null,
+        JSON.stringify(dependencyIds),
+        normalizeRiskLevel(draft.riskLevel),
+        draft.verificationPlan?.trim() || defaultVerificationPlan(trimmed),
+        "queued",
+        0,
+        "waiting",
+        "",
+        "Start this task when its dependencies are done.",
+        null,
+        "",
         draft.workpad?.trim() || "Created from GoalForge intake. Awaiting worker handoff.",
         draft.acceptanceCriteria.trim() || defaultAcceptance(trimmed),
         "",
@@ -136,15 +177,132 @@ export class BoardStore {
     return { goal, tasks };
   }
 
+  addTasksToGoal(goalId: string, drafts: TaskDraft[]): { goal: Goal; tasks: Task[] } {
+    const goal = this.getGoal(goalId);
+    if (goal.status === "closed") {
+      throw new Error(`${goalId} is closed.`);
+    }
+    const taskDrafts = drafts.length ? drafts : [defaultTaskDraft(goal.text)];
+    const now = timestamp();
+    const existingTaskCount = this.taskCount();
+    const planned = taskDrafts.map((draft, index) => ({
+      draft,
+      taskId: `TASK-${existingTaskCount + index + 1}`,
+    }));
+    const titleToId = new Map(
+      planned.map(({ draft, taskId }) => [normalizeTitle(draft.title), taskId]),
+    );
+
+    const tasks: Task[] = [];
+    for (const { draft, taskId } of planned) {
+      const dependencyIds = normalizeDependencies(draft.dependsOn, titleToId);
+      this.db.prepare(`
+        INSERT INTO tasks (
+          id, goal_id, title, description, status, kind, ops_action, priority, branch_name, worktree_path,
+          thread_id, dependency_ids_json, risk_level, verification_plan, loop_phase, loop_attempt,
+          current_gate, verification_summary, next_action, needs_input_prompt, supervisor_decision, workpad,
+          acceptance_criteria, validation, blocked_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        taskId,
+        goalId,
+        normalizeTitle(draft.title),
+        draft.description.trim() || goal.text,
+        "ready",
+        draft.kind === "ops" ? "ops" : "code",
+        draft.kind === "ops" ? normalizeOpsAction(draft.opsAction) : null,
+        normalizePriority(draft.priority),
+        null,
+        null,
+        null,
+        JSON.stringify(dependencyIds),
+        normalizeRiskLevel(draft.riskLevel),
+        draft.verificationPlan?.trim() || defaultVerificationPlan(goal.text),
+        "queued",
+        0,
+        "waiting",
+        "",
+        "Start this task when its dependencies are done.",
+        null,
+        "",
+        draft.workpad?.trim() || "Created as GoalForge follow-up work.",
+        draft.acceptanceCriteria.trim() || defaultAcceptance(goal.text),
+        "",
+        null,
+        now,
+        now,
+      );
+      tasks.push(this.getTask(taskId));
+    }
+
+    this.appendEvent(
+      tasks[0]?.id ?? null,
+      null,
+      "compiler",
+      "goal",
+      `Added ${tasks.length} follow-up task${tasks.length === 1 ? "" : "s"} to ${goalId}.`,
+    );
+    return { goal, tasks };
+  }
+
   getBoard(): BoardSnapshot {
     return {
       goals: this.listGoals(),
       tasks: this.listTasks(),
       runs: this.listRuns(),
+      agentStatuses: this.listAgentStatuses(),
+      externalAgents: this.listExternalAgents(),
       messages: this.listMessages(),
       events: this.listEvents(250),
       statuses: TASK_STATUSES.map((id) => ({ id, label: TASK_STATUS_LABELS[id] })),
+      projectState: this.getProjectState(),
     };
+  }
+
+  getProjectState(): ProjectState {
+    return {
+      mainThreadId: this.getProjectValue("main_thread_id"),
+      mainThreadCreatedAt: this.getProjectValue("main_thread_created_at"),
+      mainThreadResetAt: this.getProjectValue("main_thread_reset_at"),
+      mainThreadSummary: this.getProjectValue("main_thread_summary") ?? "",
+    };
+  }
+
+  setMainThread(threadId: string, summary = ""): ProjectState {
+    const now = timestamp();
+    this.setProjectValue("main_thread_id", threadId);
+    this.setProjectValue("main_thread_created_at", now);
+    this.setProjectValue("main_thread_summary", summary);
+    this.appendEvent(
+      null,
+      null,
+      "main-thread",
+      "thread",
+      `Project main thread set to ${threadId}.`,
+    );
+    return this.getProjectState();
+  }
+
+  resetMainThread(threadId: string, summary = ""): ProjectState {
+    const now = timestamp();
+    this.setProjectValue("main_thread_id", threadId);
+    this.setProjectValue("main_thread_created_at", now);
+    this.setProjectValue("main_thread_reset_at", now);
+    this.setProjectValue("main_thread_summary", summary);
+    this.appendEvent(
+      null,
+      null,
+      "main-thread",
+      "reset",
+      `Project main thread reset to ${threadId}.`,
+    );
+    return this.getProjectState();
+  }
+
+  updateMainThreadSummary(summary: string): ProjectState {
+    this.setProjectValue("main_thread_summary", summary);
+    this.appendEvent(null, null, "main-thread", "summary", "Project main thread summary updated.");
+    return this.getProjectState();
   }
 
   getTask(id: string): Task {
@@ -163,11 +321,44 @@ export class BoardStore {
     return goalFromRow(row);
   }
 
-  deleteTask(taskId: string): ActivityEvent {
-    const task = this.getTask(taskId);
-    if (task.status === "done") {
-      throw new Error(`${task.id} is Done and cannot be deleted from the board.`);
+  closeGoal(goalId: string, summary = ""): { goal: Goal; event: ActivityEvent } {
+    const goal = this.getGoal(goalId);
+    if (goal.status === "closed") {
+      const event = this.appendEvent(
+        null,
+        null,
+        "goal",
+        "close",
+        `${goalId} already closed.`,
+      );
+      return { goal, event };
     }
+    const progress = summarizeGoalProgress(this.getBoard(), goalId);
+    if (!progress?.completionReady) {
+      throw new Error(
+        `${goalId} is not ready to close: ${
+          progress?.completionReason ?? "goal progress is unavailable"
+        }`,
+      );
+    }
+    const closureSummary = summary.trim() ||
+      `${progress.done}/${progress.total} tasks done. ${progress.completionReason}`;
+    const now = timestamp();
+    this.db.prepare(
+      "UPDATE goals SET status = 'closed', closed_at = ?, closure_summary = ? WHERE id = ?",
+    ).run(now, closureSummary, goalId);
+    const event = this.appendEvent(
+      null,
+      null,
+      "goal",
+      "close",
+      `Closed ${goalId}: ${closureSummary}`,
+    );
+    return { goal: this.getGoal(goalId), event };
+  }
+
+  deleteTask(taskId: string): ActivityEvent {
+    this.getTask(taskId);
     this.db.prepare(
       "UPDATE runs SET status = 'failed', finished_at = ? WHERE task_id = ? AND status = 'running'",
     )
@@ -182,14 +373,36 @@ export class BoardStore {
     );
   }
 
+  clearDoneTasks(): { count: number; event: ActivityEvent } {
+    const rows = this.db.prepare("SELECT id FROM tasks WHERE status = 'done'").all() as SqlRow[];
+    const ids = rows.map((row) => String(row.id));
+    if (ids.length) {
+      const placeholders = ids.map(() => "?").join(", ");
+      this.db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+    }
+    const event = this.appendEvent(
+      null,
+      null,
+      "user",
+      "delete",
+      ids.length
+        ? `Cleared ${ids.length} completed task${
+          ids.length === 1 ? "" : "s"
+        } from the board. Branches and worktrees were left on disk.`
+        : "No completed tasks to clear.",
+    );
+    return { count: ids.length, event };
+  }
+
   findDispatchableTask(): Task | null {
     const row = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status IN ('ready', 'inbox')
       ORDER BY priority DESC, created_at ASC
-      LIMIT 1
-    `).get() as SqlRow | undefined;
-    return row ? taskFromRow(row) : null;
+    `).all() as SqlRow[];
+    return row.map(taskFromRow).find((task) =>
+      this.dependenciesDone(task) && !this.hasUnresolvedConflict(task)
+    ) ?? null;
   }
 
   listDispatchableTasks(limit = 20): Task[] {
@@ -197,8 +410,12 @@ export class BoardStore {
       SELECT * FROM tasks
       WHERE status IN ('ready', 'inbox')
       ORDER BY priority DESC, created_at ASC
-      LIMIT ?
-    `).all(limit) as SqlRow[]).map(taskFromRow);
+    `).all() as SqlRow[]).map(taskFromRow).filter((task) =>
+      this.dependenciesDone(task) && !this.hasUnresolvedConflict(task)
+    ).slice(
+      0,
+      limit,
+    );
   }
 
   hasRunningRun(taskId: string): boolean {
@@ -220,12 +437,72 @@ export class BoardStore {
       status: "running",
       startedAt: timestamp(),
       finishedAt: null,
+      stopRequestedAt: null,
     };
     this.db.prepare(
       "INSERT INTO runs (id, task_id, role, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(run.id, run.taskId, run.role, run.status, run.startedAt, run.finishedAt);
     this.appendEvent(taskId, run.id, role, "run", `Started ${role} run ${run.id}.`);
+    const task = this.getTask(taskId);
+    this.updateTaskLoop(taskId, {
+      phase: "planning",
+      attempt: task.loopAttempt + 1,
+      currentGate: "worktree",
+      nextAction: "GoalForge is preparing project context and an isolated worktree.",
+      needsInputPrompt: null,
+    });
+    this.upsertAgentStatus({
+      taskId,
+      runId: run.id,
+      threadId: null,
+      turnId: null,
+      phase: "starting",
+      headline: "Preparing worker run.",
+      detail: "GoalForge is setting up this task.",
+      risk: "none",
+      lastSupervisorAction: null,
+      needsInputPrompt: null,
+      interruptible: false,
+    });
     return run;
+  }
+
+  requestTaskStop(taskId: string, reason = "User requested this task to stop."): ActivityEvent {
+    const task = this.getTask(taskId);
+    const run = this.getRunningRunForTask(task.id);
+    if (!run) {
+      throw new Error(`${task.id} does not have a running agent to stop.`);
+    }
+    const now = timestamp();
+    this.db.prepare("UPDATE runs SET stop_requested_at = ? WHERE id = ?").run(now, run.id);
+    this.updateTaskLoop(task.id, {
+      currentGate: "stopping",
+      nextAction: "GoalForge is stopping the active Codex turn for this task.",
+      needsInputPrompt: "Stop requested. Wait for the active turn to halt before restarting.",
+    });
+    this.upsertAgentStatus({
+      taskId: task.id,
+      runId: run.id,
+      phase: "blocked",
+      headline: "Stop requested.",
+      detail: reason,
+      risk: "needs_user",
+      lastSupervisorAction: "User requested this task to stop.",
+      needsInputPrompt: "Stop requested. Wait for the active turn to halt before restarting.",
+      interruptible: false,
+    });
+    return this.appendEvent(task.id, run.id, "user", "stop", reason);
+  }
+
+  isRunStopRequested(runId: string): boolean {
+    return Boolean(this.getRun(runId).stopRequestedAt);
+  }
+
+  getRunningRunForTask(taskId: string): Run | null {
+    const row = this.db.prepare(
+      "SELECT * FROM runs WHERE task_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1",
+    ).get(taskId) as SqlRow | undefined;
+    return row ? runFromRow(row) : null;
   }
 
   finishRun(runId: string, status: "completed" | "failed"): Run {
@@ -237,7 +514,253 @@ export class BoardStore {
     );
     const run = this.getRun(runId);
     this.appendEvent(run.taskId, run.id, run.role, "run", `Run ${run.id} ${status}.`);
+    const task = this.getTask(run.taskId);
+    if (
+      !(status === "completed" && task.loopPhase === "done") &&
+      !(status === "failed" && task.loopPhase === "blocked" && task.needsInputPrompt)
+    ) {
+      this.updateTaskLoop(run.taskId, {
+        phase: status === "completed" ? "done" : "blocked",
+        currentGate: status === "completed" ? "complete" : "stopped",
+        nextAction: status === "completed"
+          ? "Task run is complete."
+          : "Read the blocker, add input if needed, then restart the task.",
+        needsInputPrompt: status === "completed" ? null : "GoalForge stopped before completion.",
+      });
+    }
+    this.upsertAgentStatus({
+      taskId: run.taskId,
+      runId: run.id,
+      phase: status === "completed" ? "done" : "blocked",
+      headline: status === "completed" ? "Run complete." : "Run stopped.",
+      detail: status === "completed"
+        ? "GoalForge finished this worker run."
+        : "GoalForge stopped this worker run before completion.",
+      risk: status === "completed" ? "none" : "needs_user",
+      interruptible: false,
+    });
     return run;
+  }
+
+  upsertAgentStatus(
+    status: {
+      taskId: string;
+      runId: string;
+      threadId?: string | null;
+      turnId?: string | null;
+      phase?: AgentPhase;
+      headline?: string;
+      detail?: string;
+      risk?: AgentRisk;
+      lastSupervisorAction?: string | null;
+      needsInputPrompt?: string | null;
+      interruptible?: boolean;
+    },
+  ): AgentStatus {
+    const existing = this.getAgentStatus(status.runId);
+    const now = timestamp();
+    const next = {
+      taskId: status.taskId,
+      runId: status.runId,
+      threadId: status.threadId ?? existing?.threadId ?? null,
+      turnId: status.turnId ?? existing?.turnId ?? null,
+      phase: status.phase ?? existing?.phase ?? "starting",
+      headline: status.headline ?? existing?.headline ?? "Worker is starting.",
+      detail: status.detail ?? existing?.detail ?? "",
+      risk: status.risk ?? existing?.risk ?? "none",
+      lastSeenAt: now,
+      lastSupervisorAction: status.lastSupervisorAction === undefined
+        ? existing?.lastSupervisorAction ?? null
+        : status.lastSupervisorAction,
+      needsInputPrompt: status.needsInputPrompt === undefined
+        ? existing?.needsInputPrompt ?? null
+        : status.needsInputPrompt,
+      interruptible: status.interruptible ?? existing?.interruptible ?? false,
+    };
+    this.db.prepare(`
+      INSERT INTO agent_status (
+        run_id, task_id, thread_id, turn_id, phase, headline, detail, risk,
+        last_seen_at, last_supervisor_action, needs_input_prompt, interruptible
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(run_id) DO UPDATE SET
+        task_id = excluded.task_id,
+        thread_id = excluded.thread_id,
+        turn_id = excluded.turn_id,
+        phase = excluded.phase,
+        headline = excluded.headline,
+        detail = excluded.detail,
+        risk = excluded.risk,
+        last_seen_at = excluded.last_seen_at,
+        last_supervisor_action = excluded.last_supervisor_action,
+        needs_input_prompt = excluded.needs_input_prompt,
+        interruptible = excluded.interruptible
+    `).run(
+      next.runId,
+      next.taskId,
+      next.threadId,
+      next.turnId,
+      next.phase,
+      next.headline,
+      next.detail,
+      next.risk,
+      next.lastSeenAt,
+      next.lastSupervisorAction,
+      next.needsInputPrompt,
+      next.interruptible ? 1 : 0,
+    );
+    return this.getAgentStatus(status.runId) ?? next;
+  }
+
+  recordTriageAttempt(taskId: string, fingerprint: string): Task {
+    const task = this.getTask(taskId);
+    this.db.prepare(
+      "UPDATE tasks SET triage_attempts = ?, blocked_fingerprint = ?, updated_at = ? WHERE id = ?",
+    ).run(task.triageAttempts + 1, fingerprint, timestamp(), task.id);
+    return this.getTask(taskId);
+  }
+
+  resetTriageAttempts(taskId: string): Task {
+    this.db.prepare(
+      "UPDATE tasks SET triage_attempts = 0, updated_at = ? WHERE id = ?",
+    ).run(timestamp(), taskId);
+    return this.getTask(taskId);
+  }
+
+  setBlockedFingerprint(taskId: string, fingerprint: string): Task {
+    this.db.prepare(
+      "UPDATE tasks SET blocked_fingerprint = ?, updated_at = ? WHERE id = ?",
+    ).run(fingerprint, timestamp(), taskId);
+    return this.getTask(taskId);
+  }
+
+  setTaskKind(taskId: string, kind: "code" | "ops", opsAction: OpsAction | null): Task {
+    this.db.prepare(
+      "UPDATE tasks SET kind = ?, ops_action = ?, updated_at = ? WHERE id = ?",
+    ).run(kind, kind === "ops" ? opsAction : null, timestamp(), taskId);
+    return this.getTask(taskId);
+  }
+
+  reportExternalAgent(
+    report: {
+      id: string;
+      agent: string;
+      state: ExternalAgentState;
+      headline?: string;
+      cwd?: string;
+      sessionId?: string | null;
+    },
+  ): { status: ExternalAgentStatus; changed: boolean } {
+    const existing = this.getExternalAgent(report.id);
+    const now = timestamp();
+    const next: ExternalAgentStatus = {
+      id: report.id,
+      agent: report.agent,
+      state: report.state,
+      headline: report.headline ?? existing?.headline ?? "",
+      cwd: report.cwd ?? existing?.cwd ?? "",
+      sessionId: report.sessionId === undefined ? existing?.sessionId ?? null : report.sessionId,
+      startedAt: existing?.startedAt ?? now,
+      lastSeenAt: now,
+    };
+    this.db.prepare(`
+      INSERT INTO external_agents (
+        id, agent, state, headline, cwd, session_id, started_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        agent = excluded.agent,
+        state = excluded.state,
+        headline = excluded.headline,
+        cwd = excluded.cwd,
+        session_id = excluded.session_id,
+        last_seen_at = excluded.last_seen_at
+    `).run(
+      next.id,
+      next.agent,
+      next.state,
+      next.headline,
+      next.cwd,
+      next.sessionId,
+      next.startedAt,
+      next.lastSeenAt,
+    );
+    return { status: next, changed: existing?.state !== next.state };
+  }
+
+  getExternalAgent(id: string): ExternalAgentStatus | null {
+    const row = this.db.prepare("SELECT * FROM external_agents WHERE id = ?").get(id) as
+      | SqlRow
+      | undefined;
+    return row ? externalAgentFromRow(row) : null;
+  }
+
+  listExternalAgents(): ExternalAgentStatus[] {
+    return (this.db.prepare(
+      "SELECT * FROM external_agents ORDER BY last_seen_at DESC",
+    ).all() as SqlRow[]).map(externalAgentFromRow);
+  }
+
+  pruneExternalAgents(maxAgeMs: number): number {
+    const nowMs = Date.now();
+    let removed = 0;
+    for (const status of this.listExternalAgents()) {
+      const lastSeen = Date.parse(status.lastSeenAt);
+      if (Number.isFinite(lastSeen) && nowMs - lastSeen <= maxAgeMs) {
+        continue;
+      }
+      this.db.prepare("DELETE FROM external_agents WHERE id = ?").run(status.id);
+      removed++;
+    }
+    return removed;
+  }
+
+  getAgentStatus(runId: string): AgentStatus | null {
+    const row = this.db.prepare("SELECT * FROM agent_status WHERE run_id = ?").get(runId) as
+      | SqlRow
+      | undefined;
+    return row ? agentStatusFromRow(row) : null;
+  }
+
+  listActiveAgentStatuses(): AgentStatus[] {
+    return (this.db.prepare(`
+      SELECT agent_status.* FROM agent_status
+      JOIN runs ON runs.id = agent_status.run_id
+      WHERE runs.status = 'running'
+      ORDER BY agent_status.last_seen_at DESC
+    `).all() as SqlRow[]).map(agentStatusFromRow);
+  }
+
+  markStaleAgentStatuses(maxAgeMs: number): ActivityEvent[] {
+    const nowMs = Date.now();
+    const events: ActivityEvent[] = [];
+    for (const status of this.listActiveAgentStatuses()) {
+      const lastSeen = Date.parse(status.lastSeenAt);
+      if (!Number.isFinite(lastSeen) || nowMs - lastSeen <= maxAgeMs || status.risk === "stale") {
+        continue;
+      }
+      this.upsertAgentStatus({
+        taskId: status.taskId,
+        runId: status.runId,
+        phase: status.phase,
+        headline: "No recent agent activity.",
+        detail: "GoalForge has not seen new Codex events for this active run.",
+        risk: "stale",
+        interruptible: status.interruptible,
+      });
+      this.recordSupervisorDecision(
+        status.taskId,
+        "Marked active task stale because no recent Codex events arrived.",
+      );
+      events.push(
+        this.appendEvent(
+          status.taskId,
+          status.runId,
+          "supervisor",
+          "stale",
+          "No recent Codex activity for this running task.",
+        ),
+      );
+    }
+    return events;
   }
 
   recoverStaleRuns(): ActivityEvent[] {
@@ -320,10 +843,23 @@ export class BoardStore {
     }
 
     const blockedReason = to === "blocked" ? reason || "Blocked without details." : null;
+    const loopPatch = loopPatchForTransition(to, reason);
     const now = timestamp();
     this.db.prepare(
-      "UPDATE tasks SET status = ?, blocked_reason = ?, updated_at = ? WHERE id = ?",
-    ).run(to, blockedReason, now, taskId);
+      `UPDATE tasks
+       SET status = ?, blocked_reason = ?, loop_phase = ?, current_gate = ?, next_action = ?,
+           needs_input_prompt = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(
+      to,
+      blockedReason,
+      loopPatch.phase,
+      loopPatch.currentGate,
+      loopPatch.nextAction,
+      loopPatch.needsInputPrompt,
+      now,
+      taskId,
+    );
 
     const updated = this.getTask(taskId);
     const event = this.appendEvent(
@@ -356,6 +892,47 @@ export class BoardStore {
     return this.getTask(taskId);
   }
 
+  updateTaskLoop(
+    taskId: string,
+    patch: {
+      phase?: TaskLoopPhase;
+      attempt?: number;
+      currentGate?: string;
+      verificationSummary?: string;
+      nextAction?: string;
+      needsInputPrompt?: string | null;
+      supervisorDecision?: string;
+    },
+  ): Task {
+    const task = this.getTask(taskId);
+    const phase = patch.phase ?? task.loopPhase;
+    const attempt = patch.attempt ?? task.loopAttempt;
+    const currentGate = patch.currentGate ?? task.currentGate;
+    const verificationSummary = patch.verificationSummary ?? task.verificationSummary;
+    const nextAction = patch.nextAction ?? task.nextAction;
+    const needsInputPrompt = patch.needsInputPrompt === undefined
+      ? task.needsInputPrompt
+      : patch.needsInputPrompt;
+    const supervisorDecision = patch.supervisorDecision ?? task.supervisorDecision;
+    this.db.prepare(`
+      UPDATE tasks
+      SET loop_phase = ?, loop_attempt = ?, current_gate = ?, verification_summary = ?,
+          next_action = ?, needs_input_prompt = ?, supervisor_decision = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      phase,
+      attempt,
+      currentGate,
+      verificationSummary,
+      nextAction,
+      needsInputPrompt,
+      supervisorDecision,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
   assignWorktree(taskId: string, branchName: string, worktreePathValue: string): Task {
     this.db.prepare(
       "UPDATE tasks SET branch_name = ?, worktree_path = ?, updated_at = ? WHERE id = ?",
@@ -369,6 +946,93 @@ export class BoardStore {
       timestamp(),
       taskId,
     );
+    return this.getTask(taskId);
+  }
+
+  assignThreadLineage(
+    taskId: string,
+    parentThreadId: string | null,
+    threadId: string | null,
+  ): Task {
+    this.db.prepare(
+      "UPDATE tasks SET parent_thread_id = ?, thread_id = ?, updated_at = ? WHERE id = ?",
+    ).run(parentThreadId, threadId, timestamp(), taskId);
+    return this.getTask(taskId);
+  }
+
+  updateTaskActiveTurn(taskId: string, turnId: string | null): Task {
+    this.db.prepare("UPDATE tasks SET active_turn_id = ?, updated_at = ? WHERE id = ?").run(
+      turnId,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
+  updateTaskContextManifest(taskId: string, manifestPath: string): Task {
+    this.db.prepare("UPDATE tasks SET context_manifest_path = ?, updated_at = ? WHERE id = ?").run(
+      manifestPath,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
+  updateTaskCard(taskId: string, taskCard: string): Task {
+    this.db.prepare("UPDATE tasks SET task_card = ?, updated_at = ? WHERE id = ?").run(
+      taskCard,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
+  updateTaskHandoff(taskId: string, handoffSummary: string): Task {
+    this.db.prepare("UPDATE tasks SET handoff_summary = ?, updated_at = ? WHERE id = ?").run(
+      handoffSummary,
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
+  updateTaskTouchedPaths(taskId: string, paths: string[]): Task {
+    const unique = uniqueStrings(paths);
+    this.db.prepare("UPDATE tasks SET touched_paths_json = ?, updated_at = ? WHERE id = ?").run(
+      JSON.stringify(unique),
+      timestamp(),
+      taskId,
+    );
+    return this.getTask(taskId);
+  }
+
+  addConflictSignal(taskId: string, signal: string): Task {
+    const task = this.getTask(taskId);
+    const signals = uniqueStrings([...task.conflictSignals, signal]);
+    this.db.prepare("UPDATE tasks SET conflict_signals_json = ?, updated_at = ? WHERE id = ?").run(
+      JSON.stringify(signals),
+      timestamp(),
+      taskId,
+    );
+    this.appendEvent(taskId, null, "orchestrator", "conflict", signal);
+    return this.getTask(taskId);
+  }
+
+  recordSupervisorDecision(taskId: string, decision: string): Task {
+    const task = this.getTask(taskId);
+    const text = decision.replace(/\s+/g, " ").trim();
+    if (!text) {
+      return task;
+    }
+    const next = task.supervisorDecision
+      ? `${task.supervisorDecision}\n${timestamp()} ${text}`
+      : `${timestamp()} ${text}`;
+    this.db.prepare("UPDATE tasks SET supervisor_decision = ?, updated_at = ? WHERE id = ?").run(
+      limitText(next, 2000),
+      timestamp(),
+      taskId,
+    );
+    this.appendEvent(taskId, null, "supervisor", "decision", text);
     return this.getTask(taskId);
   }
 
@@ -440,6 +1104,10 @@ export class BoardStore {
       CREATE TABLE IF NOT EXISTS goals (
         id TEXT PRIMARY KEY,
         text TEXT NOT NULL,
+        completion_contract TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        closed_at TEXT,
+        closure_summary TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
       );
 
@@ -452,7 +1120,24 @@ export class BoardStore {
         priority INTEGER NOT NULL DEFAULT 0,
         branch_name TEXT,
         worktree_path TEXT,
+        parent_thread_id TEXT,
         thread_id TEXT,
+        active_turn_id TEXT,
+	        context_manifest_path TEXT,
+	        dependency_ids_json TEXT NOT NULL DEFAULT '[]',
+	        risk_level TEXT NOT NULL DEFAULT 'medium',
+	        verification_plan TEXT NOT NULL DEFAULT '',
+	        loop_phase TEXT NOT NULL DEFAULT 'queued',
+	        loop_attempt INTEGER NOT NULL DEFAULT 0,
+	        current_gate TEXT NOT NULL DEFAULT 'waiting',
+	        verification_summary TEXT NOT NULL DEFAULT '',
+	        next_action TEXT NOT NULL DEFAULT 'Start this task.',
+	        needs_input_prompt TEXT,
+	        supervisor_decision TEXT NOT NULL DEFAULT '',
+	        task_card TEXT NOT NULL DEFAULT '',
+        handoff_summary TEXT NOT NULL DEFAULT '',
+        touched_paths_json TEXT NOT NULL DEFAULT '[]',
+        conflict_signals_json TEXT NOT NULL DEFAULT '[]',
         workpad TEXT NOT NULL DEFAULT '',
         acceptance_criteria TEXT NOT NULL DEFAULT '',
         validation TEXT NOT NULL DEFAULT '',
@@ -467,7 +1152,23 @@ export class BoardStore {
         role TEXT NOT NULL,
         status TEXT NOT NULL,
         started_at TEXT NOT NULL,
-        finished_at TEXT
+        finished_at TEXT,
+        stop_requested_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS agent_status (
+        run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        thread_id TEXT,
+        turn_id TEXT,
+        phase TEXT NOT NULL,
+        headline TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
+        risk TEXT NOT NULL DEFAULT 'none',
+        last_seen_at TEXT NOT NULL,
+        last_supervisor_action TEXT,
+        needs_input_prompt TEXT,
+        interruptible INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS events (
@@ -490,6 +1191,11 @@ export class BoardStore {
         UNIQUE(path)
       );
 
+      CREATE TABLE IF NOT EXISTS project_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -498,9 +1204,54 @@ export class BoardStore {
         processed INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS external_agents (
+        id TEXT PRIMARY KEY,
+        agent TEXT NOT NULL,
+        state TEXT NOT NULL,
+        headline TEXT NOT NULL DEFAULT '',
+        cwd TEXT NOT NULL DEFAULT '',
+        session_id TEXT,
+        started_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      );
     `);
+    this.ensureColumn("tasks", "parent_thread_id", "TEXT");
+    this.ensureColumn("goals", "completion_contract", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("goals", "status", "TEXT NOT NULL DEFAULT 'open'");
+    this.ensureColumn("goals", "closed_at", "TEXT");
+    this.ensureColumn("goals", "closure_summary", "TEXT NOT NULL DEFAULT ''");
     this.ensureColumn("tasks", "thread_id", "TEXT");
+    this.ensureColumn("tasks", "active_turn_id", "TEXT");
+    this.ensureColumn("tasks", "context_manifest_path", "TEXT");
+    this.ensureColumn("tasks", "dependency_ids_json", "TEXT NOT NULL DEFAULT '[]'");
+    this.ensureColumn("tasks", "risk_level", "TEXT NOT NULL DEFAULT 'medium'");
+    this.ensureColumn("tasks", "verification_plan", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("tasks", "loop_phase", "TEXT NOT NULL DEFAULT 'queued'");
+    this.ensureColumn("tasks", "loop_attempt", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("tasks", "current_gate", "TEXT NOT NULL DEFAULT 'waiting'");
+    this.ensureColumn("tasks", "verification_summary", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("tasks", "next_action", "TEXT NOT NULL DEFAULT 'Start this task.'");
+    this.ensureColumn("tasks", "needs_input_prompt", "TEXT");
+    this.ensureColumn("tasks", "supervisor_decision", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("tasks", "task_card", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("tasks", "handoff_summary", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("tasks", "touched_paths_json", "TEXT NOT NULL DEFAULT '[]'");
+    this.ensureColumn("tasks", "conflict_signals_json", "TEXT NOT NULL DEFAULT '[]'");
     this.ensureColumn("events", "raw_json", "TEXT");
+    this.ensureColumn("agent_status", "thread_id", "TEXT");
+    this.ensureColumn("agent_status", "turn_id", "TEXT");
+    this.ensureColumn("agent_status", "headline", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("agent_status", "detail", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("agent_status", "risk", "TEXT NOT NULL DEFAULT 'none'");
+    this.ensureColumn("agent_status", "last_supervisor_action", "TEXT");
+    this.ensureColumn("agent_status", "needs_input_prompt", "TEXT");
+    this.ensureColumn("agent_status", "interruptible", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("runs", "stop_requested_at", "TEXT");
+    this.ensureColumn("tasks", "kind", "TEXT NOT NULL DEFAULT 'code'");
+    this.ensureColumn("tasks", "ops_action", "TEXT");
+    this.ensureColumn("tasks", "triage_attempts", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("tasks", "blocked_fingerprint", "TEXT");
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -530,6 +1281,12 @@ export class BoardStore {
     );
   }
 
+  private listAgentStatuses(): AgentStatus[] {
+    return (this.db.prepare(
+      "SELECT * FROM agent_status ORDER BY last_seen_at DESC",
+    ).all() as SqlRow[]).map(agentStatusFromRow);
+  }
+
   private listMessages(): QueuedMessage[] {
     return (this.db.prepare("SELECT * FROM messages ORDER BY id ASC").all() as SqlRow[]).map(
       messageFromRow,
@@ -548,6 +1305,54 @@ export class BoardStore {
     };
     return `${prefix}-${Number(row.count) + 1}`;
   }
+
+  private taskCount(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM tasks").get() as { count: number };
+    return Number(row.count);
+  }
+
+  private dependenciesDone(task: Task): boolean {
+    if (!task.dependencyIds.length) {
+      return true;
+    }
+    const placeholders = task.dependencyIds.map(() => "?").join(", ");
+    const rows = this.db.prepare(`SELECT id, status FROM tasks WHERE id IN (${placeholders})`).all(
+      ...task.dependencyIds,
+    ) as SqlRow[];
+    const done = new Set(rows.filter((row) => row.status === "done").map((row) => String(row.id)));
+    return task.dependencyIds.every((id) => done.has(id));
+  }
+
+  private hasUnresolvedConflict(task: Task): boolean {
+    if (!task.conflictSignals.length) {
+      return false;
+    }
+    const ids = uniqueStrings(
+      task.conflictSignals.flatMap((signal) => signal.match(/\bTASK-\d+\b/g) ?? []),
+    );
+    if (!ids.length) {
+      return true;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db.prepare(`SELECT id, status FROM tasks WHERE id IN (${placeholders})`).all(
+      ...ids,
+    ) as SqlRow[];
+    const done = new Set(rows.filter((row) => row.status === "done").map((row) => String(row.id)));
+    return ids.some((id) => !done.has(id));
+  }
+
+  private getProjectValue(key: string): string | null {
+    const row = this.db.prepare("SELECT value FROM project_state WHERE key = ?").get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
+  }
+
+  private setProjectValue(key: string, value: string): void {
+    this.db.prepare(
+      "INSERT INTO project_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(key, value);
+  }
 }
 
 export function ensureRuntimeDirectories(root: string): void {
@@ -555,6 +1360,8 @@ export function ensureRuntimeDirectories(root: string): void {
   Deno.mkdirSync(worktreesPath(root), { recursive: true });
   Deno.mkdirSync(runsPath(root), { recursive: true });
   Deno.mkdirSync(promptsPath(root), { recursive: true });
+  Deno.mkdirSync(contextPath(root), { recursive: true });
+  Deno.mkdirSync(taskArtifactsPath(root), { recursive: true });
 }
 
 function ensureConfig(root: string): void {
@@ -588,7 +1395,7 @@ function defaultConfig(): GoalForgeConfig {
     port: 4733,
     workerMode: "codex",
     maxConcurrentAgents: 2,
-    codexTransport: "stdio",
+    codexTransport: "sdk",
     boardStates: TASK_STATUSES,
     model: "gpt-5.5",
     reasoningEffort: "high",
@@ -669,9 +1476,122 @@ function defaultAcceptance(text: string): string {
   ].join("\n");
 }
 
+function defaultVerificationPlan(text: string): string {
+  return [
+    `- Inspect the changed surface for: ${text.trim()}`,
+    "- Run the most relevant existing build, typecheck, lint, test, or smoke command.",
+    "- Add or update a focused test only when the project has a clear test seam.",
+    "- Record commands, observed results, changed files, and remaining risk.",
+  ].join("\n");
+}
+
+function normalizeCompletionContract(
+  text: string,
+  drafts: TaskDraft[],
+  options: { completionContract?: string },
+): string {
+  const supplied = options.completionContract?.trim();
+  if (supplied) {
+    return supplied;
+  }
+  const taskCount = drafts.length || 1;
+  return [
+    `Goal: ${text.trim()}`,
+    `- ${taskCount} planned task${taskCount === 1 ? "" : "s"} must reach Done.`,
+    "- Every Done task must include implementation evidence, validation evidence, approved review, commit evidence, clean git status, and a compact handoff or task card.",
+    "- Project memory must preserve the final behavior, changed surfaces, validation results, and remaining risks.",
+    "- GoalForge may close this goal only when the active goal verdict is Ready To Close.",
+  ].join("\n");
+}
+
 function normalizeTitle(title: string): string {
   const trimmed = title.trim() || "Untitled task";
   return trimmed.length > 84 ? `${trimmed.slice(0, 81)}...` : trimmed;
+}
+
+function normalizeDependencies(
+  values: string[] | undefined,
+  titleToId: Map<string, string>,
+): string[] {
+  if (!values?.length) {
+    return [];
+  }
+  return uniqueStrings(
+    values.map((value) => {
+      const trimmed = value.trim();
+      return titleToId.get(normalizeTitle(trimmed)) ?? trimmed;
+    }).filter(Boolean),
+  );
+}
+
+function loopPatchForTransition(
+  status: TaskStatus,
+  reason: string,
+): {
+  phase: TaskLoopPhase;
+  currentGate: string;
+  nextAction: string;
+  needsInputPrompt: string | null;
+} {
+  if (status === "in_progress") {
+    return {
+      phase: "working",
+      currentGate: "implementation",
+      nextAction: "GoalForge is letting the Codex worker implement the task.",
+      needsInputPrompt: null,
+    };
+  }
+  if (status === "review") {
+    return {
+      phase: "reviewing",
+      currentGate: "review",
+      nextAction: "GoalForge is reviewing validation evidence and the diff.",
+      needsInputPrompt: null,
+    };
+  }
+  if (status === "done") {
+    return {
+      phase: "done",
+      currentGate: "complete",
+      nextAction: "Task is complete and ready to remain in project memory.",
+      needsInputPrompt: null,
+    };
+  }
+  if (status === "blocked") {
+    return {
+      phase: "blocked",
+      currentGate: "needs-input",
+      nextAction: "Read the blocker, add input if needed, then restart the task.",
+      needsInputPrompt: reason || "GoalForge needs direction before this task can continue.",
+    };
+  }
+  return {
+    phase: "queued",
+    currentGate: "waiting",
+    nextAction: "Start this task when its dependencies are done.",
+    needsInputPrompt: null,
+  };
+}
+
+function normalizeRiskLevel(value: unknown): TaskRiskLevel {
+  return value === "low" || value === "high" ? value : "medium";
+}
+
+function normalizeLoopPhase(value: unknown): TaskLoopPhase {
+  const phase = String(value ?? "");
+  return [
+      "queued",
+      "planning",
+      "working",
+      "testing",
+      "repairing",
+      "reviewing",
+      "remembering",
+      "done",
+      "blocked",
+    ].includes(phase)
+    ? phase as TaskLoopPhase
+    : "queued";
 }
 
 function normalizePriority(priority: number): number {
@@ -685,6 +1605,10 @@ function goalFromRow(row: SqlRow): Goal {
   return {
     id: String(row.id),
     text: String(row.text),
+    completionContract: String(row.completion_contract ?? ""),
+    status: row.status === "closed" ? "closed" : "open",
+    closedAt: nullableString(row.closed_at),
+    closureSummary: String(row.closure_summary ?? ""),
     createdAt: String(row.created_at),
   };
 }
@@ -696,17 +1620,42 @@ function taskFromRow(row: SqlRow): Task {
     title: String(row.title),
     description: String(row.description),
     status: String(row.status) as TaskStatus,
+    kind: row.kind === "ops" ? "ops" : "code",
+    opsAction: normalizeOpsAction(row.ops_action),
     priority: Number(row.priority),
     branchName: nullableString(row.branch_name),
     worktreePath: nullableString(row.worktree_path),
+    parentThreadId: nullableString(row.parent_thread_id),
     threadId: nullableString(row.thread_id),
+    activeTurnId: nullableString(row.active_turn_id),
+    contextManifestPath: nullableString(row.context_manifest_path),
+    dependencyIds: parseStringArray(row.dependency_ids_json),
+    riskLevel: normalizeRiskLevel(row.risk_level),
+    verificationPlan: String(row.verification_plan ?? ""),
+    loopPhase: normalizeLoopPhase(row.loop_phase),
+    loopAttempt: Number(row.loop_attempt ?? 0),
+    currentGate: String(row.current_gate ?? "waiting"),
+    verificationSummary: String(row.verification_summary ?? ""),
+    nextAction: String(row.next_action ?? "Start this task."),
+    needsInputPrompt: nullableString(row.needs_input_prompt),
+    supervisorDecision: String(row.supervisor_decision ?? ""),
+    taskCard: String(row.task_card ?? ""),
+    handoffSummary: String(row.handoff_summary ?? ""),
+    touchedPaths: parseStringArray(row.touched_paths_json),
+    conflictSignals: parseStringArray(row.conflict_signals_json),
     workpad: String(row.workpad ?? ""),
     acceptanceCriteria: String(row.acceptance_criteria ?? ""),
     validation: String(row.validation ?? ""),
     blockedReason: nullableString(row.blocked_reason),
+    triageAttempts: Number(row.triage_attempts ?? 0),
+    blockedFingerprint: nullableString(row.blocked_fingerprint),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function normalizeOpsAction(value: unknown): OpsAction | null {
+  return OPS_ACTIONS.includes(String(value) as OpsAction) ? String(value) as OpsAction : null;
 }
 
 function runFromRow(row: SqlRow): Run {
@@ -717,6 +1666,24 @@ function runFromRow(row: SqlRow): Run {
     status: String(row.status) as Run["status"],
     startedAt: String(row.started_at),
     finishedAt: nullableString(row.finished_at),
+    stopRequestedAt: nullableString(row.stop_requested_at),
+  };
+}
+
+function agentStatusFromRow(row: SqlRow): AgentStatus {
+  return {
+    taskId: String(row.task_id),
+    runId: String(row.run_id),
+    threadId: nullableString(row.thread_id),
+    turnId: nullableString(row.turn_id),
+    phase: normalizeAgentPhase(row.phase),
+    headline: String(row.headline ?? ""),
+    detail: String(row.detail ?? ""),
+    risk: normalizeAgentRisk(row.risk),
+    lastSeenAt: String(row.last_seen_at),
+    lastSupervisorAction: nullableString(row.last_supervisor_action),
+    needsInputPrompt: nullableString(row.needs_input_prompt),
+    interruptible: Boolean(row.interruptible),
   };
 }
 
@@ -744,8 +1711,83 @@ function messageFromRow(row: SqlRow): QueuedMessage {
   };
 }
 
+function externalAgentFromRow(row: SqlRow): ExternalAgentStatus {
+  return {
+    id: String(row.id),
+    agent: String(row.agent),
+    state: normalizeExternalAgentState(row.state),
+    headline: String(row.headline ?? ""),
+    cwd: String(row.cwd ?? ""),
+    sessionId: nullableString(row.session_id),
+    startedAt: String(row.started_at),
+    lastSeenAt: String(row.last_seen_at),
+  };
+}
+
+export function normalizeExternalAgentState(value: unknown): ExternalAgentState {
+  const text = String(value);
+  return EXTERNAL_AGENT_STATES.includes(text as ExternalAgentState)
+    ? text as ExternalAgentState
+    : "working";
+}
+
+function normalizeAgentPhase(value: unknown): AgentPhase {
+  const text = String(value);
+  const phases: AgentPhase[] = [
+    "starting",
+    "planning",
+    "reading",
+    "editing",
+    "running",
+    "testing",
+    "reviewing",
+    "merging",
+    "blocked",
+    "done",
+  ];
+  return phases.includes(text as AgentPhase) ? text as AgentPhase : "running";
+}
+
+function normalizeAgentRisk(value: unknown): AgentRisk {
+  const text = String(value);
+  const risks: AgentRisk[] = [
+    "none",
+    "test_failed",
+    "conflict",
+    "stale",
+    "needs_user",
+    "session",
+  ];
+  return risks.includes(text as AgentRisk) ? text as AgentRisk : "none";
+}
+
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function limitText(value: string, maxCharacters: number): string {
+  if (value.length <= maxCharacters) {
+    return value;
+  }
+  return value.slice(value.length - maxCharacters);
 }
 
 function timestamp(): string {

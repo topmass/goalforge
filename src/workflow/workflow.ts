@@ -8,6 +8,11 @@ export interface WorkflowHook {
   timeoutMs: number;
 }
 
+export interface WorkflowAuthority {
+  publish: boolean;
+  maxTriageRetries: number;
+}
+
 export interface WorkflowRuntime {
   version: number;
   trackerKind: "goalforge-local";
@@ -21,6 +26,7 @@ export interface WorkflowRuntime {
   githubPrReview: boolean;
   worktreesDir: string;
   hooks: Record<WorkflowHookStage, WorkflowHook[]>;
+  authority: WorkflowAuthority;
   instructions: string;
 }
 
@@ -60,12 +66,13 @@ export function parseWorkflow(source: string): WorkflowRuntime {
   const workspace = record(data.workspace);
   const github = record(data.github);
   const hooks = record(workspace.hooks);
+  const authority = record(data.authority);
 
   return {
     version: numberValue(data.version, 1),
     trackerKind: tracker.kind === "goalforge-local" ? "goalforge-local" : "goalforge-local",
     maxConcurrentAgents: positiveInt(agent.max_concurrent_agents, 2),
-    maxTurns: positiveInt(agent.max_turns, 1),
+    maxTurns: positiveInt(agent.max_turns, 3),
     maxRetries: positiveInt(agent.max_retries, 1),
     retryBackoffMs: positiveInt(agent.retry_backoff_ms, 1000),
     model: stringValue(codex.model, "gpt-5.5"),
@@ -74,6 +81,10 @@ export function parseWorkflow(source: string): WorkflowRuntime {
     githubPrReview: booleanValue(github.pr_review, false),
     worktreesDir: stringValue(workspace.worktrees_dir, ".goalforge/worktrees"),
     hooks: normalizeHooks(hooks),
+    authority: {
+      publish: booleanValue(authority.publish, true),
+      maxTriageRetries: nonNegativeInt(authority.max_triage_retries, 2),
+    },
     instructions: body.trim() || defaultInstructions(),
   };
 }
@@ -85,7 +96,7 @@ tracker:
   kind: goalforge-local
 agent:
   max_concurrent_agents: 2
-  max_turns: 1
+	  max_turns: 3
   max_retries: 1
   retry_backoff_ms: 1000
 codex:
@@ -94,6 +105,9 @@ codex:
   fast_mode: true
 github:
   pr_review: false
+authority:
+  publish: true
+  max_triage_retries: 2
 workspace:
   worktrees_dir: .goalforge/worktrees
   hooks:
@@ -121,6 +135,12 @@ and merge work.
 - Inbox also holds work that needs user direction or a resolved blocker.
 - Done means the reviewer approved the work and GoalForge merged it.
 
+## Loop Contract
+Every task moves through a durable loop:
+Queued -> Planning -> Working -> Testing -> Repairing -> Reviewing -> Remembering -> Done.
+Blocked means GoalForge has a concrete blocker or user decision to show in the TUI.
+Each phase should preserve the current gate, next action, verification summary, and any needed input.
+
 ## Workpad Contract
 Every worker handoff should preserve:
 - The task objective and any narrowed assumptions.
@@ -129,13 +149,24 @@ Every worker handoff should preserve:
 - Validation commands and observed results.
 - Blockers, confusions, or follow-up tasks.
 
-## Agent Contract
-- Work in the assigned worktree only.
-- Keep edits scoped to the task acceptance criteria.
-- Use subagents only for independent investigation, verification, or implementation slices.
+	## Agent Contract
+	- Work in the assigned worktree only.
+	- Keep edits scoped to the task acceptance criteria.
+	- Follow the task verification plan and any discovered verification gates.
+	- Use subagents only for independent investigation, verification, or implementation slices.
 - Do not mutate .goalforge runtime state directly.
 - Do not create commits; GoalForge records commits, reviews, and merges.
 - If blocked, state the blocker and the exact user decision or repo change needed.
+
+## Authority Contract
+- Repo-level operations such as committing the root working tree and pushing to the remote are
+  GoalForge harness actions, never agent actions. The authority frontmatter controls them:
+  publish allows the harness publish action, max_triage_retries bounds triage-driven retries.
+- When a worker blocks with a concrete question, the GoalForge main agent triages it first:
+  resolve it with an allowed harness action, retry the worker once with corrected instructions,
+  or escalate to the user with one clear ask.
+- Hard external blockers (missing credentials, third-party accounts, user-only decisions) always
+  escalate immediately. The same blocker appearing twice always escalates.
 `;
 }
 
@@ -253,6 +284,11 @@ function numberValue(value: ParsedValue | undefined, fallback: number): number {
 function positiveInt(value: ParsedValue | undefined, fallback: number): number {
   const number = numberValue(value, fallback);
   return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function nonNegativeInt(value: ParsedValue | undefined, fallback: number): number {
+  const number = numberValue(value, fallback);
+  return Number.isInteger(number) && number >= 0 ? number : fallback;
 }
 
 function booleanValue(value: ParsedValue | undefined, fallback: boolean): boolean {

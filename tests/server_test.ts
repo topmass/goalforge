@@ -1,7 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import {
   CodexClient,
   CodexSession,
+  CodexThreadReadResult,
   CodexTurnInput,
   CodexTurnResult,
 } from "../src/workers/codex_app_server.ts";
@@ -71,6 +72,23 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertStringIncludes(board.tasks[0].validation, "Test turn:");
     assertStringIncludes(board.tasks[0].validation, "GoalForge review: APPROVED");
     assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
+    assert(board.agentStatuses.some((status) => status.phase === "done"));
+
+    const threadRead = await fetch(`${server.url}/api/tasks/TASK-1/thread`).then((response) =>
+      response.json()
+    );
+    assertEquals(threadRead.thread.threadId, "thread-server-test");
+    assertEquals(threadRead.thread.turnCount, 1);
+
+    const compactTask = await fetch(`${server.url}/api/tasks/TASK-1/compact-thread`, {
+      method: "POST",
+    });
+    assertEquals(compactTask.ok, true);
+
+    const compactMain = await fetch(`${server.url}/api/main/compact`, {
+      method: "POST",
+    });
+    assertEquals(compactMain.ok, true);
 
     const planned = await fetch(`${server.url}/api/goals/plan`, {
       method: "POST",
@@ -78,6 +96,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
       body: JSON.stringify({ text: "Plan through the GUI path" }),
     }).then((response) => response.json());
     assertEquals(planned.tasks.length, 1);
+    assertStringIncludes(planned.goal.completionContract, "Complete every planned task.");
 
     const deleteResponse = await fetch(`${server.url}/api/tasks/${planned.tasks[0].id}`, {
       method: "DELETE",
@@ -124,9 +143,191 @@ Deno.test("server deletes a started task with a stale running run", async () => 
   }
 });
 
+Deno.test("server requests a running task stop", async () => {
+  const root = Deno.makeTempDirSync();
+  const port = 49133 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const store = new BoardStore(root);
+    try {
+      const { task } = store.createGoal("Stop from the TUI");
+      store.createRun(task.id, "worker");
+    } finally {
+      store.close();
+    }
+
+    const stopResponse = await fetch(`${server.url}/api/tasks/TASK-1/stop`, {
+      method: "POST",
+    });
+    assertEquals(stopResponse.ok, true);
+    await stopResponse.json();
+    const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+    assertEquals(Boolean(board.runs[0].stopRequestedAt), true);
+    assertStringIncludes(board.tasks[0].nextAction, "stopping");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("server clears completed tasks from the board", async () => {
+  const root = Deno.makeTempDirSync();
+  const port = 49203 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const store = new BoardStore(root);
+    try {
+      const { tasks } = store.createGoalWithTasks("Clear finished cards", [
+        {
+          title: "Done card",
+          description: "Finish this card.",
+          acceptanceCriteria: "Done.",
+          priority: 100,
+        },
+        {
+          title: "Ready card",
+          description: "Keep this card.",
+          acceptanceCriteria: "Still ready.",
+          priority: 90,
+        },
+      ]);
+      store.updateTaskValidation(tasks[0].id, "Validated.");
+      store.requestTransition(tasks[0].id, "in_progress", "test", "started");
+      store.requestTransition(tasks[0].id, "review", "test", "ready");
+      store.requestTransition(tasks[0].id, "done", "test", "complete");
+    } finally {
+      store.close();
+    }
+
+    const response = await fetch(`${server.url}/api/tasks/done`, { method: "DELETE" });
+    assertEquals(response.ok, true);
+    const cleared = await response.json();
+    assertEquals(cleared.count, 1);
+    const board = await fetch(`${server.url}/api/board`).then((item) => item.json());
+    assertEquals(board.tasks.length, 1);
+    assertEquals(board.tasks[0].title, "Ready card");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("server creates a manual task without Codex planning", async () => {
+  const root = Deno.makeTempDirSync();
+  const port = 49233 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const response = await fetch(`${server.url}/api/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Click-created task",
+        description: "Created from the command center.",
+        acceptanceCriteria: "Visible on the board.",
+      }),
+    });
+    assertEquals(response.ok, true);
+    const created = await response.json();
+    assertEquals(created.tasks.length, 1);
+    assertEquals(created.tasks[0].title, "Click-created task");
+    assertEquals(created.tasks[0].acceptanceCriteria, "Visible on the board.");
+
+    const board = await fetch(`${server.url}/api/board`).then((item) => item.json());
+    assertEquals(board.tasks.length, 1);
+    assertEquals(board.tasks[0].title, "Click-created task");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("server builds a goal by planning tasks and starting the queue", async () => {
+  const root = Deno.makeTempDirSync();
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["commit", "--allow-empty", "-m", "seed"]);
+  const port = 49333 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const response = await fetch(`${server.url}/api/goals/build`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "Build the requested feature completely" }),
+    });
+    assertEquals(response.ok, true);
+    const created = await response.json();
+    assertEquals(created.tasks.length, 1);
+    assertEquals(created.running, true);
+    assertEquals(created.tasks[0].id, "TASK-1");
+
+    const board = await waitForClosedGoal(server.url);
+    assertEquals(board.tasks[0].status, "done");
+    assertEquals(board.goals[0].status, "closed");
+    assertStringIncludes(board.goals[0].closureSummary, "1/1 tasks done.");
+    assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
+    assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("server ensures and reuses the persistent main Codex thread", async () => {
+  const root = Deno.makeTempDirSync();
+  let starts = 0;
+  const port = 49533 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent, () => starts++),
+  });
+  try {
+    const first = await fetch(`${server.url}/api/main/ensure`, { method: "POST" }).then((item) =>
+      item.json()
+    );
+    assertEquals(first.mainThreadId, "thread-server-test");
+    assertEquals(starts, 1);
+
+    const second = await fetch(`${server.url}/api/main/ensure`, { method: "POST" }).then((item) =>
+      item.json()
+    );
+    assertEquals(second.mainThreadId, "thread-server-test");
+    assertEquals(starts, 1);
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+  }
+
+  const reopened = startServer(root, port + 1000, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent, () => starts++),
+  });
+  try {
+    const state = await fetch(`${reopened.url}/api/main/ensure`, { method: "POST" }).then((item) =>
+      item.json()
+    );
+    assertEquals(state.mainThreadId, "thread-server-test");
+    assertEquals(starts, 1);
+  } finally {
+    reopened.shutdown();
+    await reopened.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 interface BoardResponse {
+  goals: Array<{ id: string; status: string; closureSummary: string; completionContract: string }>;
   tasks: Array<{ status: string; validation: string }>;
   events: Array<{ message: string }>;
+  agentStatuses: Array<{ phase: string }>;
 }
 
 class TestCodexClient implements CodexClient {
@@ -140,9 +341,11 @@ class TestCodexClient implements CodexClient {
         message: string;
       },
     ) => void,
+    private readonly onStartSession: () => void = () => {},
   ) {}
 
   startSession(cwd: string): Promise<CodexSession> {
+    this.onStartSession();
     return Promise.resolve({ threadId: "thread-server-test", cwd });
   }
 
@@ -150,7 +353,38 @@ class TestCodexClient implements CodexClient {
     return Promise.resolve({ threadId, cwd });
   }
 
+  readThread(session: CodexSession, includeTurns = false): Promise<CodexThreadReadResult> {
+    return Promise.resolve({
+      threadId: session.threadId,
+      name: "GoalForge test thread",
+      status: "idle",
+      turnCount: includeTurns ? 1 : 0,
+      raw: { id: session.threadId, name: "GoalForge test thread" },
+    });
+  }
+
+  compactThread(_session: CodexSession): Promise<void> {
+    return Promise.resolve();
+  }
+
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    if (_input.title === "GoalForge main thread seed") {
+      assertStringIncludes(_input.prompt, "persistent GoalForge main thread");
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "main thread seed acknowledged",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-main-seed",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     if (_input.title === "GoalForge goal compiler") {
       assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
@@ -191,6 +425,23 @@ class TestCodexClient implements CodexClient {
       };
     }
 
+    if (_input.title.endsWith(": absorb")) {
+      assertStringIncludes(_input.prompt, "Absorb this completed GoalForge task");
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "absorbed task memory",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-absorb-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+
     if (_input.title === "GoalForge scheduler") {
       assertStringIncludes(_input.prompt, "Current GoalForge board memory");
       this.onEvent({
@@ -218,7 +469,7 @@ class TestCodexClient implements CodexClient {
         runId: null,
         role: "codex",
         kind: "agent",
-        message: "test engineer validation output",
+        message: "VERIFICATION_PASSED\n- Test engineer validation output.",
       });
       return {
         threadId: session.threadId,
@@ -277,4 +528,15 @@ async function waitForDone(url: string): Promise<BoardResponse> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("Task did not reach Done.");
+}
+
+async function waitForClosedGoal(url: string): Promise<BoardResponse> {
+  for (let index = 0; index < 80; index++) {
+    const board = await fetch(`${url}/api/board`).then((response) => response.json());
+    if (board.tasks[0]?.status === "done" && board.goals[0]?.status === "closed") {
+      return board;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Goal did not close after Build Goal completed.");
 }

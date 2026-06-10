@@ -90,9 +90,10 @@ function renderConfig() {
 
 function renderRuntime() {
   if (!state.runtime) return;
+  const mainThread = state.runtime.projectState?.mainThreadId || "NO MAIN THREAD";
   runtimeStatusEl.textContent = `${
     state.runtime.queueRunning ? "QUEUE RUNNING" : "QUEUE IDLE"
-  } / ${state.runtime.workflow.maxConcurrentAgents} AGENTS / ${state.runtime.needsInputTasks.length} INBOX`;
+  } / ${state.runtime.workflow.maxConcurrentAgents} AGENTS / ${state.runtime.needsInputTasks.length} INBOX / ${mainThread}`;
 }
 
 function connectEvents() {
@@ -286,8 +287,31 @@ function openTaskModal(task) {
     <div class="modal-meta">
       <span>P${task.priority}</span>
       <span>${task.branchName ? escapeHtml(task.branchName) : "NO BRANCH"}</span>
-      <span>${task.threadId ? "THREAD" : "NO THREAD"}</span>
+      <span>${task.parentThreadId ? "PARENT THREAD" : "NO PARENT"}</span>
+      <span>${task.threadId ? "CHILD THREAD" : "NO CHILD"}</span>
     </div>
+    <section>
+      <h3>Threads</h3>
+      <pre>${
+    escapeHtml([
+      `Parent: ${task.parentThreadId || "none"}`,
+      `Child: ${task.threadId || "none"}`,
+      `Active turn: ${task.activeTurnId || "none"}`,
+      `Manifest: ${task.contextManifestPath || "none"}`,
+    ].join("\n"))
+  }</pre>
+    </section>
+    <section>
+      <h3>Task Card</h3>
+      <pre>${escapeHtml(task.taskCard || "No compact task card recorded.")}</pre>
+    </section>
+    ${
+    task.conflictSignals?.length
+      ? `<section><h3>Conflict Signals</h3><pre>${
+        escapeHtml(task.conflictSignals.map((item) => `- ${item}`).join("\n"))
+      }</pre></section>`
+      : ""
+  }
     <section>
       <h3>Plan</h3>
       <pre>${escapeHtml(task.description || "No compiled plan recorded.")}</pre>
@@ -303,6 +327,11 @@ function openTaskModal(task) {
     ${
     task.validation
       ? `<section><h3>Validation</h3><pre>${escapeHtml(task.validation)}</pre></section>`
+      : ""
+  }
+    ${
+    task.handoffSummary
+      ? `<section><h3>Handoff</h3><pre>${escapeHtml(task.handoffSummary)}</pre></section>`
       : ""
   }
   `;

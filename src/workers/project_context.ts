@@ -13,14 +13,19 @@ const SKIP_DIRS = new Set([
 export async function collectAgentsInstructions(root: string): Promise<string> {
   const files: string[] = [];
   await collectAgentsFiles(root, root, files);
-  if (!files.length) {
-    return "No project AGENTS.md files were found outside GoalForge runtime folders.";
-  }
-
   const sections: string[] = [];
+  for (const name of ["VISION.md", "project-specsheet.md"]) {
+    const content = await safeRead(path.join(root, name));
+    if (content.trim()) {
+      sections.push(`## ${name}\n${content.trim()}`);
+    }
+  }
   for (const file of files.slice(0, 20)) {
     const content = await Deno.readTextFile(path.join(root, file));
     sections.push(`## ${file}\n${content.trim()}`);
+  }
+  if (!sections.length) {
+    return "No VISION.md, project-specsheet.md, or AGENTS.md files were found outside GoalForge runtime folders.";
   }
   return limitText(sections.join("\n\n"), 12000);
 }
@@ -47,4 +52,12 @@ function limitText(value: string, maxCharacters: number): string {
   }
   return value.slice(0, maxCharacters - 80).trimEnd() +
     "\n\n[GoalForge truncated AGENTS.md context to keep prompts bounded.]";
+}
+
+async function safeRead(target: string): Promise<string> {
+  try {
+    return await Deno.readTextFile(target);
+  } catch {
+    return "";
+  }
 }

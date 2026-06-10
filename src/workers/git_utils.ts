@@ -29,6 +29,7 @@ export async function prepareTaskWorktree(
     return { branchName, worktreePath, created: false };
   } catch {
     await Deno.mkdir(worktreeRoot, { recursive: true });
+    await runCommand(root, ["git", "worktree", "prune"]);
     await runCommand(root, [
       "git",
       "worktree",
@@ -52,14 +53,23 @@ export async function gitDiffStat(cwd: string): Promise<string> {
   return await runCommand(cwd, ["git", "diff", "--stat"]);
 }
 
+export async function gitChangedFiles(cwd: string): Promise<string[]> {
+  const output = await runCommand(cwd, ["git", "status", "--short"]);
+  return output.split(/\r?\n/)
+    .map((line) => line.slice(3).trim())
+    .filter(Boolean)
+    .map((file) => file.includes(" -> ") ? file.split(" -> ").at(-1) ?? file : file);
+}
+
 export async function gitCommitAll(cwd: string, message: string): Promise<string | null> {
   if (!await isGitRepo(cwd)) {
     return null;
   }
 
+  const nestedCommits = await gitCommitNestedRepos(cwd, message);
   const status = await gitStatus(cwd);
   if (!status.trim()) {
-    return null;
+    return nestedCommits.length ? nestedCommits.join(", ") : null;
   }
 
   await ensureWorktreeExcludes(cwd);
@@ -74,7 +84,91 @@ export async function gitCommitAll(cwd: string, message: string): Promise<string
     "-m",
     message,
   ]);
-  return (await runCommand(cwd, ["git", "rev-parse", "--short", "HEAD"])).trim();
+  const commit = (await runCommand(cwd, ["git", "rev-parse", "--short", "HEAD"])).trim();
+  return nestedCommits.length ? [...nestedCommits, `.:${commit}`].join(", ") : commit;
+}
+
+async function gitCommitNestedRepos(cwd: string, message: string): Promise<string[]> {
+  const nestedRepos = await dirtyNestedRepos(cwd);
+  const commits: string[] = [];
+  for (const repo of nestedRepos) {
+    await ensureWorktreeExcludes(repo);
+    await runCommand(repo, ["git", "add", "-A"]);
+    await runCommand(repo, [
+      "git",
+      "-c",
+      "user.email=goalforge@local",
+      "-c",
+      "user.name=GoalForge",
+      "commit",
+      "-m",
+      message,
+    ]);
+    const relative = path.relative(cwd, repo) || ".";
+    const hash = (await runCommand(repo, ["git", "rev-parse", "--short", "HEAD"])).trim();
+    commits.push(`${relative}:${hash}`);
+  }
+  return commits;
+}
+
+async function dirtyNestedRepos(cwd: string): Promise<string[]> {
+  const root = await gitTopLevel(cwd);
+  const status = await gitStatus(cwd);
+  const repos = new Set<string>();
+  for (const line of status.split(/\r?\n/)) {
+    const changedPath = statusPath(line);
+    if (!changedPath) {
+      continue;
+    }
+    const nested = await findNestedRepoForPath(root, changedPath);
+    if (nested && nested !== root && (await gitStatus(nested)).trim()) {
+      repos.add(nested);
+    }
+  }
+  return [...repos].sort();
+}
+
+async function gitTopLevel(cwd: string): Promise<string> {
+  return (await runCommand(cwd, ["git", "rev-parse", "--show-toplevel"])).trim();
+}
+
+function statusPath(line: string): string | null {
+  if (line.length < 4) {
+    return null;
+  }
+  const text = line.slice(3).trim();
+  if (!text) {
+    return null;
+  }
+  return text.includes(" -> ") ? text.split(" -> ").at(-1) ?? text : text;
+}
+
+async function findNestedRepoForPath(root: string, changedPath: string): Promise<string | null> {
+  let current = path.join(root, changedPath);
+  try {
+    const stat = await Deno.stat(current);
+    if (stat.isFile) {
+      current = path.dirname(current);
+    }
+  } catch {
+    current = path.dirname(current);
+  }
+  while (current.startsWith(root) && current !== root) {
+    if (await pathExists(path.join(current, ".git"))) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await Deno.stat(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function ensureWorktreeExcludes(cwd: string): Promise<void> {
@@ -91,9 +185,117 @@ export async function ensureWorktreeExcludes(cwd: string): Promise<void> {
   await Deno.writeTextFile(excludePath, `${current}${prefix}${additions.join("\n")}\n`);
 }
 
+export interface PublishResult {
+  branch: string;
+  remote: string;
+  commit: string;
+  committed: boolean;
+  pushOutput: string;
+  ahead: number;
+  behind: number;
+  status: string;
+}
+
+export async function gitPublishRoot(
+  root: string,
+  message: string,
+  remote = "origin",
+): Promise<PublishResult> {
+  if (!await isGitRepo(root)) {
+    throw new Error("GoalForge publish requires a git repository. Run goalforge init first.");
+  }
+  const remotes = (await runCommand(root, ["git", "remote"])).split(/\r?\n/).map((line) =>
+    line.trim()
+  );
+  if (!remotes.includes(remote)) {
+    throw new Error(
+      `No '${remote}' remote is configured. Add one with: git remote add ${remote} <url>`,
+    );
+  }
+  const branch = (await runCommand(root, ["git", "rev-parse", "--abbrev-ref", "HEAD"])).trim();
+  if (!branch || branch === "HEAD") {
+    throw new Error("GoalForge publish requires a checked-out branch, not a detached HEAD.");
+  }
+  const dirtyBefore = Boolean((await gitStatus(root)).trim());
+  const commitResult = await gitCommitAll(root, message);
+  if (dirtyBefore && commitResult === null) {
+    throw new Error("GoalForge publish could not commit the dirty working tree.");
+  }
+  try {
+    await runCommand(root, ["git", "fetch", remote, branch]);
+  } catch {
+    // The remote branch may not exist yet; the push below creates it.
+  }
+  const behindRemote = await remoteOnlyCommitCount(root, remote, branch);
+  if (behindRemote > 0) {
+    throw new Error(
+      `${remote}/${branch} has ${behindRemote} commit(s) that are not in the local branch. ` +
+        `Local work is committed and safe; pull or rebase onto ${remote}/${branch} (or decide to force-push), then restart the publish.`,
+    );
+  }
+  const pushOutput = await gitPush(root, remote, branch);
+  const counts = (await runCommand(root, [
+    "git",
+    "rev-list",
+    "--left-right",
+    "--count",
+    `${remote}/${branch}...HEAD`,
+  ])).trim().split(/\s+/).map(Number);
+  const commit = (await runCommand(root, ["git", "rev-parse", "--short", "HEAD"])).trim();
+  return {
+    branch,
+    remote,
+    commit,
+    committed: dirtyBefore,
+    pushOutput,
+    behind: counts[0] ?? 0,
+    ahead: counts[1] ?? 0,
+    status: (await gitStatus(root)).trim(),
+  };
+}
+
+async function remoteOnlyCommitCount(
+  root: string,
+  remote: string,
+  branch: string,
+): Promise<number> {
+  try {
+    const counts = (await runCommand(root, [
+      "git",
+      "rev-list",
+      "--left-right",
+      "--count",
+      `${remote}/${branch}...HEAD`,
+    ])).trim().split(/\s+/).map(Number);
+    return counts[0] ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function gitPush(cwd: string, remote: string, branch: string): Promise<string> {
+  const child = new Deno.Command("git", {
+    args: ["push", "-u", remote, branch],
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const output = await child.output();
+  const stdout = new TextDecoder().decode(output.stdout).trim();
+  const stderr = new TextDecoder().decode(output.stderr).trim();
+  if (!output.success) {
+    throw new Error(`git push ${remote} ${branch} failed: ${stderr || stdout}`);
+  }
+  return [stdout, stderr].filter(Boolean).join("\n");
+}
+
 export async function gitMergeBranch(root: string, branchName: string): Promise<string> {
   return await runCommand(root, [
     "git",
+    "-c",
+    "user.email=goalforge@local",
+    "-c",
+    "user.name=GoalForge",
     "merge",
     "--no-ff",
     branchName,
