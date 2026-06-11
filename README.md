@@ -113,14 +113,28 @@ goalforge ideas                             # review: show / approve / reject <i
 Ideas also appear in the TUI task rail: select one, read the pitch, press y to approve or n to
 reject.
 
-For web-augmented scouting on any backend (including local models), point GoalForge at a
-SearXNG-style endpoint; agents then search via curl, which works in every harness:
+The scout can always try ad-hoc web searches through bash (strong models usually manage on their
+own). The reliable upgrade, especially for local models, is a self-hosted SearXNG instance: clean
+JSON results from one curl, identical on every backend. Optional setup, on your machine or any
+always-on box on your network:
 
 ```bash
-docker run -d --name searxng -p 8888:8080 searxng/searxng   # enable the json format in
-                                                            # /etc/searxng/settings.yml
+mkdir -p ~/.config/searxng && cat > ~/.config/searxng/settings.yml <<CONF
+use_default_settings: true
+server:
+  secret_key: "$(openssl rand -hex 24)"
+  limiter: false
+search:
+  formats: [html, json]
+CONF
+docker run -d --name searxng --restart=always -p 8888:8080 \
+  -v ~/.config/searxng:/etc/searxng searxng/searxng
 goalforge --search http://127.0.0.1:8888
 ```
+
+podman works identically (add `:Z` to the volume on SELinux systems; for reboot survival run
+`systemctl --user enable podman-restart` and `loginctl enable-linger $USER`). Hosting it on a home
+server and pointing every machine's GoalForge at it over your tailnet works great.
 
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
 and Reply both answers a blocked agent and restarts it. The bottom footer row holds the config

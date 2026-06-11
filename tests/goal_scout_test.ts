@@ -94,7 +94,7 @@ Deno.test("scout proposes ideas, ranks them, and never re-pitches rejections", a
     assertEquals(report.ran, true);
     assertEquals(report.added.length, 2);
     assertStringIncludes(client.prompts[0], "GoalForge scout");
-    assertStringIncludes(client.prompts[0], "Web search is not configured");
+    assertStringIncludes(client.prompts[0], "lite.duckduckgo.com");
 
     const pending = store.listIdeas("proposed");
     assertEquals(pending.map((idea) => idea.title), ["Add idea export", "Add idea import"]);

@@ -160,7 +160,12 @@ Read result titles, urls, and snippets from the JSON. Fetch a promising page wit
 curl when its content matters. Search when an idea involves AI integration, new
 models, external APIs, or anything where what is state of the art this month
 changes the recommendation. Cite the urls you used in that idea's sources array.`
-    : "Web search is not configured; propose ideas from the project context alone.";
+    : `Web search: no endpoint is configured, but you may still search via bash when an
+idea truly needs current information. Try:
+  curl -s 'https://lite.duckduckgo.com/lite/?q=YOUR+QUERY'
+and read the result links and snippets from the HTML. Keep it to a couple of queries;
+if results are blocked or unreadable, propose ideas from the project context alone.
+(For reliable JSON search results the user can run: goalforge --search <searxng-url>)`;
 
   return `You are the GoalForge scout. Study this project and propose what to build next.
 
