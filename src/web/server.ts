@@ -18,7 +18,7 @@ import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
 import { buildTaskCard, ensureProjectKnowledgeFiles } from "../workers/task_memory.ts";
-import { readWorkflow } from "../workflow/workflow.ts";
+import { readWorkflow, setWorkflowMaxConcurrentAgents } from "../workflow/workflow.ts";
 
 export interface GoalForgeServer {
   url: string;
@@ -150,6 +150,7 @@ export function startServer(
             queueRunning,
             config: readConfig(normalizedRoot),
             rescue: readGlobalConfig().rescue,
+            planner: readGlobalConfig().planner,
             workflow: readWorkflow(normalizedRoot),
             projectState: board.projectState,
             runningRuns: board.runs.filter((run) => run.status === "running"),
@@ -274,6 +275,49 @@ export function startServer(
             ),
           );
           return json(updated.rescue);
+        }
+
+        if (url.pathname === "/api/planner" && request.method === "PATCH") {
+          const body = await readJson<{ enabled?: boolean; backend?: string }>(request);
+          const updated = updateGlobalConfig({
+            planner: {
+              ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+              ...(typeof body.backend === "string" && body.backend.trim()
+                ? { backend: normalizeBackend(body.backend.trim(), "codex") }
+                : {}),
+            },
+          });
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "planner",
+              "config",
+              updated.planner.enabled
+                ? `Planner model routed: ${updated.planner.backend} compiles and replans goals.`
+                : "Planner routing off; planning follows the main backend.",
+            ),
+          );
+          return json(updated.planner);
+        }
+
+        if (url.pathname === "/api/workflow/agents" && request.method === "PATCH") {
+          const body = await readJson<{ maxConcurrentAgents?: number }>(request);
+          const count = body.maxConcurrentAgents;
+          if (!Number.isInteger(count) || count! < 1 || count! > 16) {
+            return json({ error: "maxConcurrentAgents must be an integer from 1 to 16." }, 400);
+          }
+          const workflow = setWorkflowMaxConcurrentAgents(normalizedRoot, count!);
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "core",
+              "config",
+              `Max concurrent agents set to ${workflow.maxConcurrentAgents}.`,
+            ),
+          );
+          return json({ maxConcurrentAgents: workflow.maxConcurrentAgents });
         }
 
         if (url.pathname === "/api/config" && request.method === "PATCH") {

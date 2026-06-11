@@ -7,6 +7,7 @@ import {
 } from "../src/board/global_config.ts";
 import {
   createAgentClient,
+  createPlannerClient,
   ensureLocalPiProvider,
   LOCAL_PI_PROVIDER_ID,
 } from "../src/workers/agent_backend.ts";
@@ -68,6 +69,28 @@ Deno.test("agent client factory selects the configured backend", () => {
       } finally {
         Deno.env.delete("GOALFORGE_PI_MODELS_PATH");
       }
+    } finally {
+      Deno.removeSync(root, { recursive: true });
+    }
+  });
+});
+
+Deno.test("planner config persists and routes the planner client independently", () => {
+  withTempHome(() => {
+    const root = Deno.makeTempDirSync();
+    try {
+      assertEquals(readGlobalConfig().planner, { enabled: false, backend: "codex" });
+      updateGlobalConfig({ backend: "pi" });
+      assert(createPlannerClient(root, () => {}) instanceof PiRpcClient);
+
+      updateGlobalConfig({ planner: { enabled: true, backend: "codex" } });
+      assert(createPlannerClient(root, () => {}) instanceof CodexAppServerClient);
+      assert(createAgentClient(root, () => {}) instanceof PiRpcClient);
+      assertEquals(readGlobalConfig().planner, { enabled: true, backend: "codex" });
+
+      updateGlobalConfig({ planner: { enabled: false } });
+      assert(createPlannerClient(root, () => {}) instanceof PiRpcClient);
+      assertEquals(readGlobalConfig().planner.backend, "codex");
     } finally {
       Deno.removeSync(root, { recursive: true });
     }

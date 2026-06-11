@@ -40,6 +40,19 @@ export function createAgentClient(
   return new CodexAppServerClient(onEvent, readConfig(root));
 }
 
+// The planner role can run on a stronger backend than the execution loop:
+// plan on a subscription model, grind locally for free.
+export function createPlannerClient(
+  root: string,
+  onEvent: (event: ActivityEventInput) => void,
+  config: GlobalConfig = readGlobalConfig(),
+): CodexClient {
+  if (config.planner.enabled) {
+    return createAgentClient(root, onEvent, { ...config, backend: config.planner.backend });
+  }
+  return createAgentClient(root, onEvent, config);
+}
+
 export function piModelsPath(): string {
   const override = Deno.env.get("GOALFORGE_PI_MODELS_PATH");
   if (override?.trim()) {

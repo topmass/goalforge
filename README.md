@@ -83,8 +83,21 @@ goalforge --rescue off
 With rescue armed, pursue loops also use it as the takeover backend when guidance alone is not
 enough. Claude as the rescue backend consumes your Anthropic extra usage.
 
+### Planner model
+
+Route goal planning to a stronger model while the workers stay on the main backend: a subscription
+model compiles the goal into tasks, win conditions, and overnight replans, and your local model
+grinds through the implementation for free. Toggle it with the **Planner** button in the TUI footer
+(click to cycle Off, codex, claude, local, pi) or:
+
+```bash
+goalforge --planner codex                   # saved; plans and replans on codex
+goalforge --planner off                     # planning follows the main backend again
+```
+
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
-and Reply both answers a blocked agent and restarts it.
+and Reply both answers a blocked agent and restarts it. The bottom footer row holds the config
+toggles - Rescue, Planner, and Agents (max concurrent agents) - each a click to cycle.
 
 ## Pick the model that does the work
 

@@ -130,6 +130,7 @@ interface RuntimeSnapshot {
   workflow: { maxConcurrentAgents: number };
   config: { model: string; reasoningEffort: string; fastMode: boolean };
   rescue?: { enabled: boolean; backend: string; afterAttempts: number };
+  planner?: { enabled: boolean; backend: string };
   activeAgentStatuses: AgentStatus[];
   needsInputTasks: Task[];
   dispatchableTasks: Task[];
@@ -673,7 +674,7 @@ function render(): void {
   const agentLines = activeAgentLines();
   const prompt = state.promptMode ? promptPreview() : state.notice;
   const footerRows = createFooterActionRows();
-  hitZones = buildHitZones(footerRows);
+  hitZones = buildHitZones();
 
   renderer.root.add(
     Box(
@@ -1009,19 +1010,30 @@ function createFooterActionRows(): FooterAction[][] {
     { label: "Delete Task", run: deleteSelectedTask },
     { label: "Exit", run: shutdown },
   ];
-  primary.push({
-    label: rescueLabel(),
-    run: cycleRescue,
-    emphasized: Boolean(state.runtime?.rescue?.enabled),
-  });
-  if (state.runtime?.rescue?.enabled) {
-    primary.push({
-      label: `Tries: ${state.runtime.rescue.afterAttempts}`,
-      run: cycleRescueAttempts,
-      emphasized: true,
-    });
-  }
-  return [primary, secondary];
+  const toggles: FooterAction[] = [
+    {
+      label: rescueLabel(),
+      run: cycleRescue,
+      emphasized: Boolean(state.runtime?.rescue?.enabled),
+    },
+    ...(state.runtime?.rescue?.enabled
+      ? [{
+        label: `Tries: ${state.runtime.rescue.afterAttempts}`,
+        run: cycleRescueAttempts,
+        emphasized: true,
+      }]
+      : []),
+    {
+      label: plannerLabel(),
+      run: cyclePlanner,
+      emphasized: Boolean(state.runtime?.planner?.enabled),
+    },
+    {
+      label: `Agents: ${state.runtime?.workflow.maxConcurrentAgents ?? "?"}`,
+      run: cycleMaxAgents,
+    },
+  ];
+  return [primary, secondary, toggles];
 }
 
 const RESCUE_CYCLE = ["off", "codex", "claude", "local", "pi"] as const;
@@ -1086,6 +1098,71 @@ function cycleRescueAttempts(): void {
         return `Rescue model now chimes in after ${rescueState.afterAttempts} failed tr${
           rescueState.afterAttempts === 1 ? "y" : "ies"
         }.`;
+      },
+    },
+  );
+}
+
+const PLANNER_CYCLE = ["off", "codex", "claude", "local", "pi"] as const;
+
+function plannerLabel(): string {
+  const planner = state.runtime?.planner;
+  return planner?.enabled ? `Planner: ${planner.backend}` : "Planner: Off";
+}
+
+function cyclePlanner(): void {
+  const planner = state.runtime?.planner;
+  const current = planner?.enabled ? planner.backend : "off";
+  const index = PLANNER_CYCLE.indexOf(current as typeof PLANNER_CYCLE[number]);
+  const next = PLANNER_CYCLE[(index + 1) % PLANNER_CYCLE.length];
+  void runAction(
+    "Planner model",
+    async () => {
+      const updated = await patch("/api/planner", {
+        enabled: next !== "off",
+        ...(next !== "off" ? { backend: next } : {}),
+      }) as { enabled: boolean; backend: string };
+      if (state.runtime) {
+        state.runtime.planner = updated;
+      }
+      return updated;
+    },
+    {
+      started: "Updating planner model...",
+      complete: (result) => {
+        const plannerState = result as { enabled: boolean; backend: string };
+        return plannerState.enabled
+          ? `Planner routed: ${plannerState.backend} compiles and replans goals while workers stay on the main backend.`
+          : "Planner routing off; planning follows the main backend.";
+      },
+    },
+  );
+}
+
+const MAX_AGENTS_CYCLE = [1, 2, 3, 4];
+
+function cycleMaxAgents(): void {
+  const current = state.runtime?.workflow.maxConcurrentAgents ?? 2;
+  const index = MAX_AGENTS_CYCLE.indexOf(current);
+  const next = MAX_AGENTS_CYCLE[(index + 1) % MAX_AGENTS_CYCLE.length];
+  void runAction(
+    "Max agents",
+    async () => {
+      const updated = await patch("/api/workflow/agents", { maxConcurrentAgents: next }) as {
+        maxConcurrentAgents: number;
+      };
+      if (state.runtime) {
+        state.runtime.workflow.maxConcurrentAgents = updated.maxConcurrentAgents;
+      }
+      return updated;
+    },
+    {
+      started: "Updating max concurrent agents...",
+      complete: (result) => {
+        const workflowState = result as { maxConcurrentAgents: number };
+        return `Up to ${workflowState.maxConcurrentAgents} agent${
+          workflowState.maxConcurrentAgents === 1 ? "" : "s"
+        } can now run at once.`;
       },
     },
   );
@@ -1552,6 +1629,9 @@ function mainThreadLines(): string[] {
     state.runtime?.rescue?.enabled
       ? `Rescue: ${state.runtime.rescue.backend} after ${state.runtime.rescue.afterAttempts} tries`
       : "Rescue: off",
+    state.runtime?.planner?.enabled
+      ? `Planner: ${state.runtime.planner.backend}`
+      : "Planner: main backend",
     "",
     `Memory thread: ${state.board.projectState.mainThreadId ?? "not started"}`,
     `Created: ${state.board.projectState.mainThreadCreatedAt ?? "not started"}`,
@@ -1789,9 +1869,10 @@ function promptPreview(): string {
   return `${label}${count} ${preview}${cursor}`;
 }
 
-function buildHitZones(footerRows: FooterAction[][]): HitZone[] {
+// Footer buttons handle their own clicks via native onMouseDown; only the
+// task rail needs coordinate zones (its rows scroll under a virtual list).
+function buildHitZones(): HitZone[] {
   const width = Number(process.env.COLUMNS) || 120;
-  const height = Number(process.env.LINES) || 36;
   const taskRailWidth = Math.floor(width * 0.31);
   const taskRowsTop = 6 + flowBandHeight();
   const zones: HitZone[] = [];
@@ -1807,21 +1888,6 @@ function buildHitZones(footerRows: FooterAction[][]): HitZone[] {
       y2: taskRowsTop + index,
       run: () => selectTask(task.id),
     });
-  }
-  for (let rowIndex = 0; rowIndex < footerRows.length; rowIndex++) {
-    let x = 2;
-    const y = height - 2 + rowIndex;
-    for (const action of footerRows[rowIndex]) {
-      const buttonWidth = footerButtonWidth(action);
-      zones.push({
-        x1: x,
-        x2: x + buttonWidth - 1,
-        y1: y,
-        y2: y,
-        run: action.run,
-      });
-      x += buttonWidth + 1;
-    }
   }
   return zones;
 }

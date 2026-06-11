@@ -9,7 +9,7 @@ import { BoardStore } from "../board/store.ts";
 import { summarizeGoalProgress } from "../board/goal_progress.ts";
 import { ActivityEvent, ActivityEventInput, Goal } from "../board/types.ts";
 import { readGlobalConfig } from "../board/global_config.ts";
-import { createAgentClient } from "./agent_backend.ts";
+import { createAgentClient, createPlannerClient } from "./agent_backend.ts";
 import { fingerprintBlocker } from "./blocker_triage.ts";
 import { CodexClient } from "./codex_app_server.ts";
 import { parsePlannerResponse } from "./goal_planner.ts";
@@ -204,13 +204,14 @@ export class GoalPursuer {
     failing: Array<{ probe: { label: string; command: string }; output: string }>,
     asks: string[],
   ): Promise<boolean> {
+    const plannerRouted = readGlobalConfig().planner.enabled && !this.options.createCodexClient;
     const mainThreadId = this.store.getProjectState().mainThreadId;
-    if (!mainThreadId) {
+    if (!mainThreadId && !plannerRouted) {
       return false;
     }
     let responseText = "";
     const factory = this.options.createCodexClient ??
-      ((onEvent: (event: ActivityEventInput) => void) => createAgentClient(this.root, onEvent));
+      ((onEvent: (event: ActivityEventInput) => void) => createPlannerClient(this.root, onEvent));
     const codex = factory((event) => {
       if (event.role === "codex" && event.kind === "agent") {
         responseText += event.message;
@@ -220,7 +221,11 @@ export class GoalPursuer {
       }
     });
     try {
-      const session = await codex.resumeSession(this.root, mainThreadId);
+      // A routed planner backend cannot resume the main thread's session, so it
+      // starts fresh; the replan prompt already carries the project memory.
+      const session = plannerRouted || !mainThreadId
+        ? await codex.startSession(this.root)
+        : await codex.resumeSession(this.root, mainThreadId);
       const goal = this.store.getGoal(goalId);
       await codex.runTurn(session, {
         title: `${goalId}: replan`,

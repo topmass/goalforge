@@ -28,6 +28,10 @@ export interface GlobalConfig {
     backend: AgentBackend;
     afterAttempts: number;
   };
+  planner: {
+    enabled: boolean;
+    backend: AgentBackend;
+  };
 }
 
 export interface GlobalConfigPatch {
@@ -36,6 +40,7 @@ export interface GlobalConfigPatch {
   pi?: Partial<GlobalConfig["pi"]>;
   claude?: Partial<GlobalConfig["claude"]>;
   rescue?: Partial<GlobalConfig["rescue"]>;
+  planner?: Partial<GlobalConfig["planner"]>;
 }
 
 export function goalforgeHome(): string {
@@ -71,6 +76,10 @@ export function defaultGlobalConfig(): GlobalConfig {
       backend: "codex",
       afterAttempts: 2,
     },
+    planner: {
+      enabled: false,
+      backend: "codex",
+    },
   };
 }
 
@@ -101,6 +110,10 @@ export function readGlobalConfig(): GlobalConfig {
       backend: normalizeBackend(record(parsed.rescue).backend, defaults.rescue.backend),
       afterAttempts: intValue(record(parsed.rescue).afterAttempts, defaults.rescue.afterAttempts),
     },
+    planner: {
+      enabled: record(parsed.planner).enabled === true,
+      backend: normalizeBackend(record(parsed.planner).backend, defaults.planner.backend),
+    },
   };
 }
 
@@ -116,6 +129,7 @@ export function updateGlobalConfig(patch: GlobalConfigPatch): GlobalConfig {
     pi: { ...current.pi, ...patch.pi },
     claude: { ...current.claude, ...patch.claude },
     rescue: { ...current.rescue, ...patch.rescue },
+    planner: { ...current.planner, ...patch.planner },
   };
   Deno.mkdirSync(goalforgeHome(), { recursive: true });
   Deno.writeTextFileSync(globalConfigPath(), `${JSON.stringify(next, null, 2)}\n`);

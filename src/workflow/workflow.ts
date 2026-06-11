@@ -89,6 +89,31 @@ export function parseWorkflow(source: string): WorkflowRuntime {
   };
 }
 
+// WORKFLOW.md is a user-owned file, so changing one knob means line surgery on
+// the frontmatter, not a rewrite: replace the existing max_concurrent_agents
+// line in place, or insert one under agent: when it is missing.
+export function setWorkflowMaxConcurrentAgents(root: string, count: number): WorkflowRuntime {
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`max_concurrent_agents must be a positive integer, got ${count}.`);
+  }
+  ensureWorkflow(root);
+  const target = workflowPath(root);
+  const source = Deno.readTextFileSync(target);
+  const existing = source.match(/^(\s*)max_concurrent_agents:\s*\S.*$/m);
+  let next: string;
+  if (existing) {
+    next = source.replace(existing[0], `${existing[1]}max_concurrent_agents: ${count}`);
+  } else {
+    const agentLine = source.match(/^agent:\s*$/m);
+    if (!agentLine) {
+      throw new Error("WORKFLOW.md frontmatter has no agent: section to update.");
+    }
+    next = source.replace(agentLine[0], `agent:\n  max_concurrent_agents: ${count}`);
+  }
+  Deno.writeTextFileSync(target, next);
+  return parseWorkflow(next);
+}
+
 export function defaultWorkflow(): string {
   return `---
 version: 1

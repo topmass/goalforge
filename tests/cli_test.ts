@@ -318,6 +318,22 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
     const final = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
     assertEquals(final.backend, "codex");
     assertEquals(final.local.endpoint, "http://100.64.0.7:8080/v1");
+
+    const planner = await run("--planner", "claude");
+    assertEquals(planner.code, 0, new TextDecoder().decode(planner.stderr));
+    assertStringIncludes(
+      new TextDecoder().decode(planner.stderr),
+      "GoalForge planner model: claude",
+    );
+    const routed = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(routed.planner, { enabled: true, backend: "claude" });
+    assertEquals(routed.backend, "codex");
+
+    const plannerOff = await run("--planner", "off");
+    assertStringIncludes(new TextDecoder().decode(plannerOff.stderr), "planner model: off");
+    const off = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(off.planner.enabled, false);
+    assertEquals(off.planner.backend, "claude");
   } finally {
     Deno.removeSync(root, { recursive: true });
     Deno.removeSync(home, { recursive: true });

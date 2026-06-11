@@ -573,6 +573,7 @@ function applyBackendFlags(rawArgs: string[]): string[] {
   let model: string | null = null;
   let rescue: string | null = null;
   let rescueAfter: number | null = null;
+  let planner: string | null = null;
   for (let index = 0; index < rawArgs.length; index++) {
     const arg = rawArgs[index];
     if (arg === "--codex" || arg === "--pi" || arg === "--claude" || arg === "--local") {
@@ -585,6 +586,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
       rescue = rawArgs[++index] ?? null;
     } else if (arg === "--rescue-after") {
       rescueAfter = Number(rawArgs[++index]);
+    } else if (arg === "--planner") {
+      planner = rawArgs[++index] ?? null;
     } else {
       remaining.push(arg);
     }
@@ -606,6 +609,18 @@ function applyBackendFlags(rawArgs: string[]): string[] {
       config.rescue.enabled
         ? `GoalForge rescue model: ${config.rescue.backend} after ${config.rescue.afterAttempts} failed attempts (saved)`
         : "GoalForge rescue model: off (saved)",
+    );
+  }
+  if (planner) {
+    const config = updateGlobalConfig({
+      planner: planner === "off"
+        ? { enabled: false }
+        : { enabled: true, backend: normalizeBackend(planner, "codex") },
+    });
+    console.error(
+      config.planner.enabled
+        ? `GoalForge planner model: ${config.planner.backend} compiles and replans goals (saved)`
+        : "GoalForge planner model: off; planning follows the main backend (saved)",
     );
   }
   if (!backend && !endpoint && !model) {
@@ -1074,6 +1089,11 @@ function doctorCommand(): void {
       ? `rescue: ${config.rescue.backend} reviews stuck tasks after ${config.rescue.afterAttempts} failed attempts`
       : "rescue: off (arm with --rescue codex or the TUI Rescue button)",
   );
+  console.log(
+    config.planner.enabled
+      ? `planner: ${config.planner.backend} compiles and replans goals`
+      : "planner: off (route with --planner codex or the TUI Planner button)",
+  );
   const missingRequired = checks.filter((check) => check.label === "Git" && !check.path);
   for (const check of checks) {
     const ok = check.ok ?? Boolean(check.path);
@@ -1157,6 +1177,11 @@ Rescue model (saved; also a toggle button in the TUI footer):
   --rescue <codex|claude|local|pi|off>   Stronger model reviews stuck tasks and
                                          tells the worker how to fix them
   --rescue-after N                       Failed attempts before it chimes in (default 2)
+
+Planner model (saved; also a toggle button in the TUI footer):
+  --planner <codex|claude|local|pi|off>  Route goal planning and pursue replans to a
+                                         stronger model while workers stay on the
+                                         main backend
 
 Running goalforge with no command opens the TUI.
 `);

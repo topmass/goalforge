@@ -1,5 +1,9 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { parseWorkflow } from "../src/workflow/workflow.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import {
+  parseWorkflow,
+  readWorkflow,
+  setWorkflowMaxConcurrentAgents,
+} from "../src/workflow/workflow.ts";
 
 Deno.test("workflow parser normalizes Symphony-style local kanban config", () => {
   const workflow = parseWorkflow(`---
@@ -57,4 +61,30 @@ authority:
 `);
   assertEquals(custom.authority.publish, false);
   assertEquals(custom.authority.maxTriageRetries, 0);
+});
+
+Deno.test("setWorkflowMaxConcurrentAgents edits only that frontmatter line", () => {
+  const root = Deno.makeTempDirSync({ prefix: "goalforge-workflow-" });
+  try {
+    const updated = setWorkflowMaxConcurrentAgents(root, 4);
+    assertEquals(updated.maxConcurrentAgents, 4);
+    const source = Deno.readTextFileSync(`${root}/WORKFLOW.md`);
+    assertStringIncludes(source, "max_concurrent_agents: 4");
+    assertStringIncludes(source, "max_retries: 1");
+    assertStringIncludes(source, "# GoalForge Workflow");
+    assertEquals(readWorkflow(root).maxConcurrentAgents, 4);
+
+    Deno.writeTextFileSync(
+      `${root}/WORKFLOW.md`,
+      "---\nversion: 1\nagent:\n  max_turns: 5\n---\n# Custom body\n",
+    );
+    assertEquals(setWorkflowMaxConcurrentAgents(root, 3).maxConcurrentAgents, 3);
+    const inserted = Deno.readTextFileSync(`${root}/WORKFLOW.md`);
+    assertStringIncludes(inserted, "agent:\n  max_concurrent_agents: 3\n  max_turns: 5");
+    assertStringIncludes(inserted, "# Custom body");
+
+    assertThrows(() => setWorkflowMaxConcurrentAgents(root, 0));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
 });

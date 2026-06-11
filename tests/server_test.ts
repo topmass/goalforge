@@ -323,6 +323,46 @@ Deno.test("server ensures and reuses the persistent main Codex thread", async ()
   }
 });
 
+Deno.test("server updates planner routing and max concurrent agents", async () => {
+  const root = Deno.makeTempDirSync();
+  const port = 50133 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  const patchJson = (path: string, body: unknown) =>
+    fetch(`${server.url}${path}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  try {
+    const planner = await patchJson("/api/planner", { enabled: true, backend: "claude" })
+      .then((response) => response.json());
+    assertEquals(planner, { enabled: true, backend: "claude" });
+
+    const agents = await patchJson("/api/workflow/agents", { maxConcurrentAgents: 4 })
+      .then((response) => response.json());
+    assertEquals(agents.maxConcurrentAgents, 4);
+    assertStringIncludes(
+      await Deno.readTextFile(`${root}/WORKFLOW.md`),
+      "max_concurrent_agents: 4",
+    );
+
+    const runtime = await fetch(`${server.url}/api/runtime`).then((response) => response.json());
+    assertEquals(runtime.planner, { enabled: true, backend: "claude" });
+    assertEquals(runtime.workflow.maxConcurrentAgents, 4);
+
+    const rejected = await patchJson("/api/workflow/agents", { maxConcurrentAgents: 0 });
+    assertEquals(rejected.status, 400);
+    await rejected.json();
+  } finally {
+    await patchJson("/api/planner", { enabled: false }).then((response) => response.json());
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 interface BoardResponse {
   goals: Array<{ id: string; status: string; closureSummary: string; completionContract: string }>;
   tasks: Array<{ status: string; validation: string }>;
