@@ -97,6 +97,13 @@ Rules:
 	- Keep scope tight. Do not perform unrelated cleanup.
 	- Start your final answer with exactly VERIFICATION_PASSED, VERIFICATION_FAILED, or NEEDS_INPUT.
 	- End with a concise test handoff listing test files changed, commands run, results, and remaining risks.
+- A bare verdict token is rejected. Your final answer must follow this exact template:
+
+VERIFICATION_PASSED
+- <command you ran>: <observed result>
+- <command you ran>: <observed result>
+Test files changed: <list or none>
+Remaining risks: <one line or none>
 	`;
 }
 

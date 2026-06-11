@@ -119,7 +119,7 @@ export class BoardStore {
       "INSERT INTO goals (id, text, completion_contract, status, closure_summary, created_at) VALUES (?, ?, ?, 'open', '', ?)",
     ).run(goalId, trimmed, normalizeCompletionContract(trimmed, taskDrafts, options), now);
 
-    const existingTaskCount = this.taskCount();
+    const existingTaskCount = this.maxIdNumber("tasks");
     const planned = taskDrafts.map((draft, index) => ({
       draft,
       taskId: `TASK-${existingTaskCount + index + 1}`,
@@ -191,7 +191,7 @@ export class BoardStore {
     }
     const taskDrafts = drafts.length ? drafts : [defaultTaskDraft(goal.text)];
     const now = timestamp();
-    const existingTaskCount = this.taskCount();
+    const existingTaskCount = this.maxIdNumber("tasks");
     const planned = taskDrafts.map((draft, index) => ({
       draft,
       taskId: `TASK-${existingTaskCount + index + 1}`,
@@ -1393,15 +1393,21 @@ export class BoardStore {
   }
 
   private nextHumanId(prefix: string, table: "goals" | "tasks"): string {
-    const row = this.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as {
-      count: number;
-    };
-    return `${prefix}-${Number(row.count) + 1}`;
+    return `${prefix}-${this.maxIdNumber(table) + 1}`;
   }
 
-  private taskCount(): number {
-    const row = this.db.prepare("SELECT COUNT(*) AS count FROM tasks").get() as { count: number };
-    return Number(row.count);
+  // Ids must survive deletions (Clear Done, manual deletes), so number from the
+  // highest existing suffix rather than the row count.
+  private maxIdNumber(table: "goals" | "tasks"): number {
+    const rows = this.db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>;
+    let max = 0;
+    for (const row of rows) {
+      const match = String(row.id).match(/-(\d+)$/);
+      if (match) {
+        max = Math.max(max, Number(match[1]));
+      }
+    }
+    return max;
   }
 
   private dependenciesDone(task: Task): boolean {

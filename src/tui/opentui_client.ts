@@ -1014,6 +1014,13 @@ function createFooterActionRows(): FooterAction[][] {
     run: cycleRescue,
     emphasized: Boolean(state.runtime?.rescue?.enabled),
   });
+  if (state.runtime?.rescue?.enabled) {
+    primary.push({
+      label: `Tries: ${state.runtime.rescue.afterAttempts}`,
+      run: cycleRescueAttempts,
+      emphasized: true,
+    });
+  }
   return [primary, secondary];
 }
 
@@ -1048,6 +1055,37 @@ function cycleRescue(): void {
         return rescueState.enabled
           ? `Rescue model armed: ${rescueState.backend} reviews stuck tasks after ${rescueState.afterAttempts} failed tries (for pursue loops and long runs).`
           : "Rescue model off.";
+      },
+    },
+  );
+}
+
+const RESCUE_TRIES_CYCLE = [1, 3, 5, 10];
+
+function cycleRescueAttempts(): void {
+  const current = state.runtime?.rescue?.afterAttempts ?? 1;
+  const index = RESCUE_TRIES_CYCLE.indexOf(current);
+  const next = RESCUE_TRIES_CYCLE[(index + 1) % RESCUE_TRIES_CYCLE.length];
+  void runAction(
+    "Rescue tries",
+    async () => {
+      const updated = await patch("/api/rescue", { afterAttempts: next }) as {
+        enabled: boolean;
+        backend: string;
+        afterAttempts: number;
+      };
+      if (state.runtime) {
+        state.runtime.rescue = updated;
+      }
+      return updated;
+    },
+    {
+      started: "Updating rescue tries...",
+      complete: (result) => {
+        const rescueState = result as { afterAttempts: number };
+        return `Rescue model now chimes in after ${rescueState.afterAttempts} failed tr${
+          rescueState.afterAttempts === 1 ? "y" : "ies"
+        }.`;
       },
     },
   );

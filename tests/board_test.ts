@@ -633,3 +633,27 @@ Deno.test("tasks store thread lineage, compact cards, handoffs, and conflict sig
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("task and goal ids never collide after deletions", () => {
+  const root = Deno.makeTempDirSync();
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const first = store.createGoal("First goal");
+    const second = store.createGoal("Second goal");
+    store.deleteTask(first.task.id);
+    const third = store.createGoal("Third goal");
+    assertEquals(third.task.id, "TASK-3");
+    const followUp = store.addTasksToGoal(second.goal.id, [{
+      title: "Follow up",
+      description: "d",
+      acceptanceCriteria: "- done",
+      priority: 50,
+    }]);
+    assertEquals(followUp.tasks[0].id, "TASK-4");
+    assertEquals(third.goal.id, "GOAL-3");
+  } finally {
+    store.close();
+    Deno.removeSync(root, { recursive: true });
+  }
+});
