@@ -3,7 +3,7 @@ version: 1
 tracker:
   kind: goalforge-local
 agent:
-  max_concurrent_agents: 2
+  max_concurrent_agents: 3
 	  max_turns: 3
   max_retries: 1
   retry_backoff_ms: 1000

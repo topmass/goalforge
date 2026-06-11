@@ -619,8 +619,33 @@ export function startServer(
         }
 
         if (url.pathname === "/api/run-queue" && request.method === "POST") {
+          // When nothing is dispatchable, say WHY instead of silently idling:
+          // the usual culprit is ready tasks gated behind a blocked dependency.
+          let note = "";
+          if (!store.listDispatchableTasks(1).length) {
+            const board = store.getBoard();
+            const blockedIds = new Set(
+              board.tasks.filter((task) => task.status === "blocked").map((task) => task.id),
+            );
+            const gated = board.tasks.filter((task) =>
+              (task.status === "ready" || task.status === "inbox") &&
+              task.dependencyIds.some((id) => blockedIds.has(id))
+            );
+            note = gated.length
+              ? `Nothing can start: ${gated.length} task${
+                gated.length === 1 ? " is" : "s are"
+              } waiting on ${
+                [
+                  ...new Set(
+                    gated.flatMap((task) => task.dependencyIds.filter((id) => blockedIds.has(id))),
+                  ),
+                ]
+                  .join(", ")
+              } (Needs Input). Select it and Reply to unblock the chain.`
+              : "Nothing is dispatchable: no ready tasks with satisfied dependencies.";
+          }
           startQueue();
-          return json({ ok: true, running: queueRunning });
+          return json({ ok: true, running: queueRunning, note });
         }
 
         if (url.pathname === "/api/tasks/done" && request.method === "DELETE") {

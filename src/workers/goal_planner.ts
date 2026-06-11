@@ -192,9 +192,18 @@ Rules:
 - prompt must be under 4,000 characters.
 - priority is an integer from 0 to 999. Higher priority runs first.
 - dependsOn is an array of earlier task titles this task needs before it can run. Use [] when independent.
+- PARALLELISM IS THE DEFAULT: dependsOn must be [] unless this task literally consumes
+  another task's output (its files, its API, its schema). Touching the same project or the
+  same theme is NOT a dependency. Separate bug fixes are independent even when they live in
+  the same codebase; chains of dependsOn serialize the whole goal and one stuck task then
+  freezes every task behind it.
 - riskLevel is low, medium, or high.
 - verificationPlan is a markdown string with the cheapest reliable proof for that task.
 - acceptanceCriteria must be a single markdown string with concrete checkable bullets.
+- Every acceptance criterion must be checkable INSIDE the repository: builds, tests, greps,
+  file inspection. Never require running the game or app, manual QA, or in-game testing as
+  a criterion; the verifier cannot do those and the task would fail verification forever.
+  Put manual playtest suggestions in workpad instead.
 - Keep each prompt scoped so one worker can complete it in an isolated git worktree.
 - If the goal is a repository-level publish operation (for example committing and pushing the
   current working tree or existing local commits to the remote), return exactly one task with

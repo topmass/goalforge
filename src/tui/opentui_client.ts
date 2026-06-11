@@ -1026,7 +1026,13 @@ function createFooterActionRows(): FooterAction[][] {
   const secondary: FooterAction[] = [
     {
       label: "Run Ready Tasks",
-      run: () => void runAction("Run queue", () => post("/api/run-queue", {})),
+      run: () =>
+        void runAction("Run queue", () => post("/api/run-queue", {}), {
+          complete: (result) => {
+            const note = (result as { note?: string })?.note;
+            return note || "Queue running: dispatching ready tasks up to the agent limit.";
+          },
+        }),
     },
     {
       label: "Reply",
