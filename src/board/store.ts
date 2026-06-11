@@ -774,6 +774,13 @@ export class BoardStore {
     });
   }
 
+  setTaskDependencies(taskId: string, dependencyIds: string[]): Task {
+    this.getTask(taskId);
+    this.db.prepare("UPDATE tasks SET dependency_ids_json = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(dependencyIds), timestamp(), taskId);
+    return this.getTask(taskId);
+  }
+
   recordTriageAttempt(taskId: string, fingerprint: string): Task {
     const task = this.getTask(taskId);
     this.db.prepare(

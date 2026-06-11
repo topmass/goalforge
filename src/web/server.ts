@@ -668,7 +668,14 @@ export function startServer(
               onEvent: broadcastActivity,
               createCodexClient: options.createCodexClient,
             });
-            worker.runTask(taskId).then(broadcastBoard).catch((error) => {
+            worker.runTask(taskId).then(() => {
+              broadcastBoard();
+              // A finished task frees an agent slot; keep the board moving
+              // while dispatchable work remains instead of idling silently.
+              if (store.listDispatchableTasks(1).length) {
+                startQueue();
+              }
+            }).catch((error) => {
               const message = error instanceof Error ? error.message : String(error);
               broadcast("error", { message });
             });

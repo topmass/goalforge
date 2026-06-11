@@ -195,27 +195,22 @@ export class GoalPursuer {
       createCodexClient: factory,
       runMode: "unattended",
     });
-    let ranAny = false;
-    while (Date.now() < deadline) {
-      const next = this.store.getBoard().tasks.find((task) =>
-        task.goalId === goalId && (task.status === "ready" || task.status === "inbox")
+    // Slot-based queue scoped to this goal: parallel agents, refilled as they
+    // free up, with the pursue deadline halting new dispatches.
+    try {
+      const completed = await worker.runQueue(Number.POSITIVE_INFINITY, undefined, {
+        filter: (task) => task.goalId === goalId,
+        shouldStop: () => Date.now() >= deadline,
+      });
+      return completed.length > 0;
+    } catch (error) {
+      this.emit(
+        goalId,
+        "task-error",
+        `Goal task run failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      if (!next) {
-        break;
-      }
-      ranAny = true;
-      try {
-        await worker.runTask(next.id);
-      } catch (error) {
-        this.emit(
-          goalId,
-          "task-error",
-          `${next.id} failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        break;
-      }
+      return false;
     }
-    return ranAny;
   }
 
   private async replan(

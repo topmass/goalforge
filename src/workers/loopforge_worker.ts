@@ -7,7 +7,7 @@ import {
   CodexSessionOptions,
   CodexTurnResult,
 } from "./codex_app_server.ts";
-import { createAgentClient } from "./agent_backend.ts";
+import { createAgentClient, createPlannerClient } from "./agent_backend.ts";
 import { readGlobalConfig } from "../board/global_config.ts";
 import { consultRescue, RescueClientFactory } from "./rescue.ts";
 import { extractTurnId } from "./codex_event_normalizer.ts";
@@ -24,7 +24,7 @@ import {
 } from "./git_utils.ts";
 import { buildTriagePrompt, fingerprintBlocker, parseTriageResponse } from "./blocker_triage.ts";
 import { GoalReviewer } from "./goal_reviewer.ts";
-import { GoalScheduler } from "./goal_scheduler.ts";
+import { buildDependencyReviewPrompt, parseDependencyReview } from "./dependency_review.ts";
 import { GoalTestEngineer, parseVerificationResponse } from "./goal_test_engineer.ts";
 import { GhPullRequestGate, PullRequestGate, PullRequestInfo } from "./github_pr.ts";
 import { LiveSupervisor } from "./live_supervisor.ts";
@@ -50,6 +50,9 @@ export interface LoopForgeWorkerOptions {
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  createPlannerClient?: (
+    onEvent: (event: ActivityEventInput) => void,
+  ) => CodexClient;
   createRescueClient?: RescueClientFactory;
   pullRequestGate?: PullRequestGate;
 }
@@ -65,6 +68,9 @@ export class LoopForgeWorker {
   readonly createCodexClient: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
+  readonly createPlannerClient: (
+    onEvent: (event: ActivityEventInput) => void,
+  ) => CodexClient;
   readonly pullRequestGate: PullRequestGate;
   readonly runMode: RunMode;
   private readonly createRescueClient?: RescueClientFactory;
@@ -76,6 +82,8 @@ export class LoopForgeWorker {
     this.onEvent = options.onEvent;
     this.createCodexClient = options.createCodexClient ??
       ((onEvent) => createAgentClient(this.root, onEvent));
+    this.createPlannerClient = options.createPlannerClient ?? options.createCodexClient ??
+      ((onEvent) => createPlannerClient(this.root, onEvent));
     this.createRescueClient = options.createRescueClient;
     this.pullRequestGate = options.pullRequestGate ?? new GhPullRequestGate(this.root);
     this.runMode = options.runMode ?? "attended";
@@ -89,59 +97,193 @@ export class LoopForgeWorker {
     return await this.runTask(task.id);
   }
 
-  async runQueue(limit = Number.POSITIVE_INFINITY, maxConcurrency?: number): Promise<Task[]> {
+  async runQueue(
+    limit = Number.POSITIVE_INFINITY,
+    maxConcurrency?: number,
+    options: { filter?: (task: Task) => boolean; shouldStop?: () => boolean } = {},
+  ): Promise<Task[]> {
     const completed: Task[] = [];
     const touchedGoalIds = new Set<string>();
-    while (completed.length < limit) {
+    const running = new Map<string, Promise<void>>();
+    const failures: unknown[] = [];
+    const failedIds = new Set<string>();
+    let started = 0;
+    let revalidationAttempted = false;
+    // Slot-based dispatch: the moment an agent finishes, the next dispatchable
+    // task starts. No batch barriers; one slow task never idles the other slots.
+    while (true) {
       const workflow = readWorkflow(this.root);
-      const tasks = this.store.listDispatchableTasks(20);
-      if (!tasks.length) {
-        if (this.createMissingGoalEvidenceRepairTasks(null)) {
-          continue;
+      const cap = Math.max(1, maxConcurrency ?? workflow.maxConcurrentAgents);
+      while (running.size < cap && started < limit && !options.shouldStop?.()) {
+        const next = this.store.listDispatchableTasks(20).find((task) =>
+          !running.has(task.id) && !failedIds.has(task.id) &&
+          (options.filter?.(task) ?? true)
+        );
+        if (!next) {
+          break;
         }
+        started++;
+        const taskId = next.id;
+        this.emit(
+          this.store.appendEvent(
+            null,
+            null,
+            "scheduler",
+            "dispatch",
+            `Dispatching ${taskId} (${running.size + 1}/${cap} agents busy).`,
+          ),
+        );
+        const slot = this.runTask(taskId)
+          .then((task) => {
+            completed.push(task);
+            touchedGoalIds.add(task.goalId);
+          })
+          .catch((error) => {
+            failures.push(error);
+            failedIds.add(taskId);
+            const message = error instanceof Error ? error.message : String(error);
+            try {
+              this.emit(
+                this.store.appendEvent(
+                  taskId,
+                  null,
+                  "orchestrator",
+                  "task-error",
+                  `${taskId} failed: ${message}`,
+                ),
+              );
+            } catch {
+              // Recording the failure is best effort.
+            }
+          })
+          .finally(() => {
+            running.delete(taskId);
+          });
+        running.set(taskId, slot);
+      }
+      if (running.size) {
+        await Promise.race(running.values());
+        continue;
+      }
+      if (options.shouldStop?.() || started >= limit) {
         break;
       }
-      const scheduler = new GoalScheduler(this.root, {
-        projectMemory: buildProjectMemory(this.store),
-        createCodexClient: this.createCodexClient,
-        onEvent: (event) => {
-          if (shouldRecordActivity(event)) {
-            this.emit(this.store.appendAgentEvent(event));
-          }
-        },
+      if (this.createMissingGoalEvidenceRepairTasks(null)) {
+        continue;
+      }
+      if (!revalidationAttempted) {
+        revalidationAttempted = true;
+        if (await this.revalidateDependencies(options.filter)) {
+          continue;
+        }
+      }
+      break;
+    }
+    this.closeReadyGoals(touchedGoalIds);
+    if (!completed.length && failures.length) {
+      throw failures[0];
+    }
+    return completed;
+  }
+
+  // One planner turn re-judges the dependency graph when the queue is stuck:
+  // ready tasks exist but every one waits on an unfinished dependency.
+  private async revalidateDependencies(filter?: (task: Task) => boolean): Promise<boolean> {
+    const board = this.store.getBoard();
+    const doneIds = new Set(
+      board.tasks.filter((task) => task.status === "done").map((task) => task.id),
+    );
+    const gated = board.tasks.filter((task) =>
+      (task.status === "ready" || task.status === "inbox") &&
+      (filter?.(task) ?? true) &&
+      task.dependencyIds.some((id) => !doneIds.has(id))
+    );
+    if (!gated.length) {
+      return false;
+    }
+    const unfinished = board.tasks.filter((task) => task.status !== "done");
+    this.emit(
+      this.store.appendEvent(
+        null,
+        null,
+        "planner",
+        "revalidate",
+        `Nothing is dispatchable; planner is re-checking dependencies for ${gated.length} gated task${
+          gated.length === 1 ? "" : "s"
+        }.`,
+      ),
+    );
+    let responseText = "";
+    const planner = this.createPlannerClient((event) => {
+      if (event.role === "codex" && event.kind === "agent") {
+        responseText += event.message;
+      }
+      const activity = { ...event, role: "planner" };
+      if (shouldRecordActivity(activity)) {
+        this.emit(this.store.appendAgentEvent(activity));
+      }
+    });
+    try {
+      const session = await planner.startSession(this.root);
+      await planner.runTurn(session, {
+        title: "LoopForge dependency revalidation",
+        prompt: buildDependencyReviewPrompt(gated, unfinished),
       });
-      const remaining = limit === Number.POSITIVE_INFINITY
-        ? maxConcurrency ?? workflow.maxConcurrentAgents
-        : limit - completed.length;
-      const decision = await scheduler.selectBatch(
-        tasks,
-        Math.min(maxConcurrency ?? workflow.maxConcurrentAgents, remaining),
-      );
+    } catch (error) {
       this.emit(
         this.store.appendEvent(
           null,
           null,
-          "scheduler",
-          "batch",
-          `Running ${decision.taskIds.join(", ")}. ${decision.notes}`,
+          "planner",
+          "revalidate",
+          `Dependency revalidation failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         ),
       );
-      const results = await Promise.allSettled(
-        decision.taskIds.map((taskId) => this.runTask(taskId)),
-      );
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          completed.push(result.value);
-          touchedGoalIds.add(result.value.goalId);
-        }
-      }
-      if (results.every((result) => result.status === "rejected")) {
-        const first = results[0] as PromiseRejectedResult;
-        throw first.reason;
-      }
+      return false;
+    } finally {
+      await planner.stop().catch(() => {});
     }
-    this.closeReadyGoals(touchedGoalIds);
-    return completed;
+    const reviewed = parseDependencyReview(
+      responseText,
+      gated.map((task) => task.id),
+      board.tasks.map((task) => task.id),
+      new Map(unfinished.map((task) => [task.id, task.dependencyIds])),
+    );
+    if (!reviewed) {
+      this.emit(
+        this.store.appendEvent(
+          null,
+          null,
+          "planner",
+          "revalidate",
+          "Dependency revalidation returned no usable changes; keeping the current graph.",
+        ),
+      );
+      return false;
+    }
+    let changed = false;
+    for (const [taskId, deps] of reviewed) {
+      const current = board.tasks.find((task) => task.id === taskId)?.dependencyIds ?? [];
+      if (JSON.stringify(current) === JSON.stringify(deps)) {
+        continue;
+      }
+      this.store.setTaskDependencies(taskId, deps);
+      changed = true;
+      this.emit(
+        this.store.appendEvent(
+          taskId,
+          null,
+          "planner",
+          "dependencies",
+          `${taskId} dependencies revalidated: ${current.join(", ") || "none"} -> ${
+            deps.join(", ") || "none"
+          }.`,
+        ),
+      );
+    }
+    return changed;
   }
 
   private closeReadyGoals(goalIds: Set<string>): void {
@@ -1677,7 +1819,22 @@ ${result.notes}`,
     });
     doneTask = this.store.updateTaskCard(doneTask.id, buildTaskCard(doneTask));
     appendSpecsheetHandoff(this.root, doneTask);
-    await this.absorbTaskIntoMainThread(doneTask);
+    try {
+      await this.runSerialized(() => this.absorbTaskIntoMainThread(doneTask));
+    } catch (error) {
+      // The work is already merged; losing one memory absorption never fails the task.
+      this.emit(
+        this.store.appendEvent(
+          doneTask.id,
+          runId,
+          "main-thread",
+          "absorb",
+          `Memory absorption failed (work is already merged): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ),
+      );
+    }
     this.store.updateTaskLoop(doneTask.id, {
       phase: "done",
       currentGate: "complete",
@@ -1776,7 +1933,10 @@ ${result.notes}`,
     return true;
   }
 
-  private async mergeBranch(branchName: string): Promise<string> {
+  // Merges and main-thread absorption mutate shared state (the root repo and
+  // the single project memory thread); parallel agents take turns through one
+  // chain so two finishing tasks never collide.
+  private async runSerialized<T>(action: () => Promise<T>): Promise<T> {
     const previous = this.mergeChain;
     let release = () => {};
     this.mergeChain = new Promise<void>((resolve) => {
@@ -1784,10 +1944,14 @@ ${result.notes}`,
     });
     await previous;
     try {
-      return await gitMergeBranch(this.root, branchName);
+      return await action();
     } finally {
       release();
     }
+  }
+
+  private async mergeBranch(branchName: string): Promise<string> {
+    return await this.runSerialized(() => gitMergeBranch(this.root, branchName));
   }
 
   private async runHooks(

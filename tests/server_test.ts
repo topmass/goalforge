@@ -703,3 +703,38 @@ async function waitForClosedGoal(url: string): Promise<BoardResponse> {
   }
   throw new Error("Goal did not close after Build Goal completed.");
 }
+
+Deno.test("finishing one task auto-continues the queue while work remains", async () => {
+  const root = Deno.makeTempDirSync();
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["commit", "--allow-empty", "-m", "seed"]);
+  const seed = new BoardStore(root);
+  seed.initProject();
+  seed.createGoalWithTasks("Two independent fixes", [
+    { title: "Fix A", description: "Touch a.txt.", acceptanceCriteria: "- done", priority: 100 },
+    { title: "Fix B", description: "Touch b.txt.", acceptanceCriteria: "- done", priority: 90 },
+  ]);
+  seed.close();
+  const port = 49233 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+  });
+  try {
+    const run = await fetch(`${server.url}/api/tasks/TASK-1/run`, { method: "POST" });
+    assertEquals(run.ok, true);
+    for (let index = 0; index < 120; index++) {
+      const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+      const a = board.tasks.find((task: { id: string }) => task.id === "TASK-1");
+      const b = board.tasks.find((task: { id: string }) => task.id === "TASK-2");
+      if (a?.status === "done" && b?.status === "done") {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Queue did not auto-continue to TASK-2 after TASK-1 finished.");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});

@@ -1258,6 +1258,75 @@ class ManualVerificationCodexClient extends TestCodexClient {
   }
 }
 
+class ParallelTrackingCodexClient extends TestCodexClient {
+  constructor(
+    onEvent: ConstructorParameters<typeof TestCodexClient>[0],
+    // Shared across instances: the worker creates one client per task run.
+    readonly load: { active: number; peak: number },
+  ) {
+    super(onEvent);
+  }
+
+  override async runTurn(
+    session: CodexSession,
+    input: CodexTurnInput,
+  ): Promise<CodexTurnResult> {
+    const isImplementationTurn = /^TASK-\d+: (?!test-engineer|review|absorb)/.test(input.title);
+    if (isImplementationTurn) {
+      this.load.active++;
+      this.load.peak = Math.max(this.load.peak, this.load.active);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      this.load.active--;
+    }
+    return await super.runTurn(session, input);
+  }
+}
+
+class FakePlannerClient implements CodexClient {
+  constructor(
+    private readonly onEvent: (
+      event: {
+        taskId: string | null;
+        runId: string | null;
+        role: string;
+        kind: string;
+        message: string;
+      },
+    ) => void,
+    private readonly reply: string,
+    readonly prompts: string[],
+  ) {}
+
+  startSession(cwd: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId: "planner-thread", cwd });
+  }
+
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId, cwd });
+  }
+
+  runTurn(session: CodexSession, input: CodexTurnInput): Promise<CodexTurnResult> {
+    this.prompts.push(input.prompt);
+    this.onEvent({
+      taskId: null,
+      runId: null,
+      role: "codex",
+      kind: "agent",
+      message: this.reply,
+    });
+    return Promise.resolve({
+      threadId: session.threadId,
+      turnId: "turn-planner",
+      status: "completed",
+      completed: true,
+    });
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 class MissingThreadCodexClient extends TestCodexClient {
   private forkAttempts = 0;
   private readonly seededThreads = new Set<string>();
@@ -1667,6 +1736,73 @@ Deno.test("unattended mode merges unverifiable work with the note recorded", asy
     assertEquals(updated.status, "done");
     assertStringIncludes(updated.validation, "needs manual verification");
     assert(prompts.some((prompt) => prompt.includes("Run mode: UNATTENDED")));
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("queue keeps all agent slots busy and refills as tasks finish", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const load = { active: 0, peak: 0 };
+  try {
+    store.initProject();
+    store.createGoalWithTasks("Three independent fixes", [
+      { title: "Fix A", description: "Touch a.txt only.", acceptanceCriteria: "- done", priority: 100 },
+      { title: "Fix B", description: "Touch b.txt only.", acceptanceCriteria: "- done", priority: 90 },
+      { title: "Fix C", description: "Touch c.txt only.", acceptanceCriteria: "- done", priority: 80 },
+    ]);
+    const worker = new LoopForgeWorker(root, store, {
+      createCodexClient: (onEvent) => new ParallelTrackingCodexClient(onEvent, load),
+    });
+    const completed = await worker.runQueue(Number.POSITIVE_INFINITY, 2);
+    assertEquals(completed.length, 3);
+    assertEquals(store.getTask("TASK-1").status, "done");
+    assertEquals(store.getTask("TASK-2").status, "done");
+    assertEquals(store.getTask("TASK-3").status, "done");
+    assertEquals(load.peak, 2, `expected two concurrent implementation turns, saw peak ${load.peak}`);
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("stuck queue revalidates dependencies and unchains independent tasks", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const plannerPrompts: string[] = [];
+  const events: string[] = [];
+  try {
+    store.initProject();
+    store.createGoalWithTasks("Two mod fixes", [
+      { title: "Fix shop rebuy", description: "Patch shop.", acceptanceCriteria: "- done", priority: 100 },
+      {
+        title: "Fix soil planting",
+        description: "Patch soil.",
+        acceptanceCriteria: "- done",
+        priority: 90,
+        dependsOn: ["Fix shop rebuy"],
+      },
+    ]);
+    store.requestTransition("TASK-1", "blocked", "test", "Stuck on purpose.");
+    const worker = new LoopForgeWorker(root, store, {
+      onEvent: (event) => events.push(`${event.role}/${event.kind}: ${event.message}`),
+      createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+      createPlannerClient: (onEvent) =>
+        new FakePlannerClient(onEvent, '{"dependencies": {"TASK-2": []}}', plannerPrompts),
+    });
+    const completed = await worker.runQueue();
+    assertEquals(completed.length, 1);
+    assertEquals(store.getTask("TASK-2").status, "done");
+    assertEquals(store.getTask("TASK-2").dependencyIds, []);
+    assertEquals(store.getTask("TASK-1").status, "blocked");
+    assert(plannerPrompts[0].includes("Re-judge dependsOn for these tasks only: TASK-2"));
+    assert(events.some((line) => line.includes("planner/dependencies")));
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
