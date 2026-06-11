@@ -8,7 +8,12 @@ import {
 } from "../board/store.ts";
 import { ActivityEvent, ActivityEventInput, TaskStatus } from "../board/types.ts";
 import { normalizeRoot, staticPath } from "../paths.ts";
-import { normalizeBackend, readGlobalConfig, updateGlobalConfig } from "../board/global_config.ts";
+import {
+  describeBackend,
+  normalizeBackend,
+  readGlobalConfig,
+  updateGlobalConfig,
+} from "../board/global_config.ts";
 import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
@@ -156,6 +161,7 @@ export function startServer(
           return json({
             queueRunning,
             config: readConfig(normalizedRoot),
+            backend: describeBackend(readGlobalConfig()),
             rescue: readGlobalConfig().rescue,
             planner: readGlobalConfig().planner,
             scout: readGlobalConfig().scout,

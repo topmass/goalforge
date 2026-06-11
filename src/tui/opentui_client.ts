@@ -139,6 +139,7 @@ interface GoalMutationResult {
 interface RuntimeSnapshot {
   queueRunning: boolean;
   workflow: { maxConcurrentAgents: number };
+  backend?: string;
   config: { model: string; reasoningEffort: string; fastMode: boolean };
   rescue?: { enabled: boolean; backend: string; afterAttempts: number };
   planner?: { enabled: boolean; backend: string };
@@ -727,7 +728,7 @@ function render(): void {
           fg: "#B7F7D4",
         }),
         Text({
-          content: `Model ${state.runtime?.config.model ?? "unknown"}  Active agents ${running}/${
+          content: `Agent ${state.runtime?.backend ?? state.runtime?.config.model ?? "unknown"}  Active agents ${running}/${
             state.runtime?.workflow.maxConcurrentAgents ?? "?"
           }  Project memory ${state.board.projectState.mainThreadId ?? "not started"}`,
           fg: "#8A98A8",
