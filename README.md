@@ -95,9 +95,36 @@ goalforge --planner codex                   # saved; plans and replans on codex
 goalforge --planner off                     # planning follows the main backend again
 ```
 
+### Scout: loops that propose what to build next
+
+The scout studies your project (memory, goals, lessons, VISION) and pitches the next ideas, each
+with what it is, why it's cool, and why now. It never builds anything: ideas wait in their own list,
+in a recommended build order, until you approve or reject them. Approve compiles the idea into a
+goal with tasks and win conditions in Ready (zero typing); reject is remembered forever so the same
+idea never comes back. During long pursue runs the scout adds one pass per hour, so you wake up to
+finished work plus a curated idea list.
+
+```bash
+goalforge --scout codex                     # arm the scout (or claude, local, pi)
+goalforge scout                             # one scout pass right now
+goalforge ideas                             # review: show / approve / reject <id>
+```
+
+Ideas also appear in the TUI task rail: select one, read the pitch, press y to approve or n to
+reject.
+
+For web-augmented scouting on any backend (including local models), point GoalForge at a
+SearXNG-style endpoint; agents then search via curl, which works in every harness:
+
+```bash
+docker run -d --name searxng -p 8888:8080 searxng/searxng   # enable the json format in
+                                                            # /etc/searxng/settings.yml
+goalforge --search http://127.0.0.1:8888
+```
+
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
 and Reply both answers a blocked agent and restarts it. The bottom footer row holds the config
-toggles - Rescue, Planner, and Agents (max concurrent agents) - each a click to cycle.
+toggles - Rescue, Planner, Scout, and Agents (max concurrent agents) - each a click to cycle.
 
 ## Pick the model that does the work
 

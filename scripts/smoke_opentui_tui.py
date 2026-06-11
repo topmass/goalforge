@@ -147,6 +147,7 @@ def run_task_smoke() -> int:
         "delete_button": "Delete Task" in text,
         "rescue_button": "Rescue:" in text,
         "planner_button": "Planner:" in text,
+        "scout_button": "Scout:" in text,
         "agents_button": "Agents:" in text,
         "mouse_selected_task": clicked_first_row and "Button delete task" in text,
         "friendly_status": "Ready" in text and "P100" not in text,

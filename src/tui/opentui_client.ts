@@ -102,9 +102,20 @@ interface Goal {
   createdAt: string;
 }
 
+interface IdeaLite {
+  id: string;
+  title: string;
+  pitch: string;
+  sources: string[];
+  buildsOn: string;
+  rank: number;
+  status: string;
+}
+
 interface BoardSnapshot {
   goals: Goal[];
   tasks: Task[];
+  ideas: IdeaLite[];
   runs: Array<{ id: string; taskId: string; status: "running" | "completed" | "failed" }>;
   agentStatuses: AgentStatus[];
   externalAgents: ExternalAgentStatus[];
@@ -131,6 +142,8 @@ interface RuntimeSnapshot {
   config: { model: string; reasoningEffort: string; fastMode: boolean };
   rescue?: { enabled: boolean; backend: string; afterAttempts: number };
   planner?: { enabled: boolean; backend: string };
+  scout?: { enabled: boolean; backend: string };
+  search?: { endpoint: string };
   activeAgentStatuses: AgentStatus[];
   needsInputTasks: Task[];
   dispatchableTasks: Task[];
@@ -140,6 +153,7 @@ interface AppState {
   board: BoardSnapshot;
   runtime: RuntimeSnapshot | null;
   selectedTaskId: string | null;
+  selectedIdeaId: string | null;
   frame: number;
   notice: string;
   promptMode: "build-goal" | "goal" | "task" | "steer" | "reset-main" | null;
@@ -174,6 +188,7 @@ interface MouseInput {
 interface TaskBoardRow {
   content: string;
   task: Task | null;
+  idea?: IdeaLite | null;
 }
 
 const args = Bun.argv.slice(2);
@@ -204,6 +219,7 @@ const state: AppState = {
   board: await getBoard(),
   runtime: await getRuntime().catch(() => null),
   selectedTaskId: null,
+  selectedIdeaId: null,
   frame: 0,
   notice: "Ready.",
   promptMode: null,
@@ -323,6 +339,15 @@ async function handleKey(key: string): Promise<void> {
     if (!updatePromptLine()) {
       render();
     }
+    return;
+  }
+  if (!state.promptMode && selectedIdea() && (key === "y" || key === "n")) {
+    if (key === "y") {
+      approveSelectedIdea();
+    } else {
+      rejectSelectedIdea();
+    }
+    render();
     return;
   }
   if (key === "up" || key === "k") {
@@ -670,7 +695,12 @@ function render(): void {
   const streamLines = displayEvents(state.board.events).map((event) =>
     activityLine(event, state.board.tasks)
   );
-  const detailLines = selected ? taskDetails(selected) : ["No task selected."];
+  const idea = selectedIdea();
+  const detailLines = idea
+    ? ideaDetails(idea)
+    : selected
+    ? taskDetails(selected)
+    : ["No task selected."];
   const agentLines = activeAgentLines();
   const prompt = state.promptMode ? promptPreview() : state.notice;
   const footerRows = createFooterActionRows();
@@ -964,6 +994,9 @@ function taskRailPanel(rows: TaskBoardRow[]) {
           if (row.task) {
             selectTask(row.task.id);
             render();
+          } else if (row.idea) {
+            selectIdea(row.idea.id);
+            render();
           }
         },
       })
@@ -972,12 +1005,19 @@ function taskRailPanel(rows: TaskBoardRow[]) {
 }
 
 function createFooterActionRows(): FooterAction[][] {
-  const taskAction = selectedTaskFooterAction();
+  const idea = selectedIdea();
+  const taskAction = idea ? null : selectedTaskFooterAction();
   const primary: FooterAction[] = [
     { label: "Build Goal", run: () => openPrompt("build-goal", "Describe the goal to build now.") },
     { label: "New Task", run: () => openPrompt("task", "Type a task title.") },
     { label: "Plan Only", run: () => openPrompt("goal", "Describe the goal to compile.") },
     ...(taskAction ? [taskAction] : []),
+    ...(idea
+      ? [
+        { label: "Approve Idea", run: approveSelectedIdea, emphasized: true },
+        { label: "Reject Idea", run: rejectSelectedIdea },
+      ]
+      : []),
   ];
   const goal = activeGoalProgress();
   if (goal?.completionReady) {
@@ -1027,6 +1067,11 @@ function createFooterActionRows(): FooterAction[][] {
       label: plannerLabel(),
       run: cyclePlanner,
       emphasized: Boolean(state.runtime?.planner?.enabled),
+    },
+    {
+      label: scoutLabel(),
+      run: cycleScout,
+      emphasized: Boolean(state.runtime?.scout?.enabled),
     },
     {
       label: `Agents: ${state.runtime?.workflow.maxConcurrentAgents ?? "?"}`,
@@ -1135,6 +1180,74 @@ function cyclePlanner(): void {
           ? `Planner routed: ${plannerState.backend} compiles and replans goals while workers stay on the main backend.`
           : "Planner routing off; planning follows the main backend.";
       },
+    },
+  );
+}
+
+const SCOUT_CYCLE = ["off", "codex", "claude", "local", "pi"] as const;
+
+function scoutLabel(): string {
+  const scout = state.runtime?.scout;
+  return scout?.enabled ? `Scout: ${scout.backend}` : "Scout: Off";
+}
+
+function cycleScout(): void {
+  const scout = state.runtime?.scout;
+  const current = scout?.enabled ? scout.backend : "off";
+  const index = SCOUT_CYCLE.indexOf(current as typeof SCOUT_CYCLE[number]);
+  const next = SCOUT_CYCLE[(index + 1) % SCOUT_CYCLE.length];
+  void runAction(
+    "Scout",
+    async () => {
+      const updated = await patch("/api/scout", {
+        enabled: next !== "off",
+        ...(next !== "off" ? { backend: next } : {}),
+      }) as { enabled: boolean; backend: string };
+      if (state.runtime) {
+        state.runtime.scout = updated;
+      }
+      return updated;
+    },
+    {
+      started: "Updating scout...",
+      complete: (result) => {
+        const scoutState = result as { enabled: boolean; backend: string };
+        return scoutState.enabled
+          ? `Scout armed: ${scoutState.backend} proposes ideas during pursue runs; you approve or reject them.`
+          : "Scout off.";
+      },
+    },
+  );
+}
+
+function approveSelectedIdea(): void {
+  const idea = selectedIdea();
+  if (!idea) {
+    return;
+  }
+  state.selectedIdeaId = null;
+  void runAction(
+    `Approve ${idea.id}`,
+    () => post(`/api/ideas/${idea.id}/approve`, {}),
+    {
+      started: `Approved ${idea.id}; the planner is compiling it into a goal...`,
+      complete: () => `${idea.id} planned into Ready. Run Ready Tasks builds it.`,
+    },
+  );
+}
+
+function rejectSelectedIdea(): void {
+  const idea = selectedIdea();
+  if (!idea) {
+    return;
+  }
+  state.selectedIdeaId = null;
+  void runAction(
+    `Reject ${idea.id}`,
+    () => post(`/api/ideas/${idea.id}/reject`, {}),
+    {
+      started: `Rejecting ${idea.id}...`,
+      complete: () => `${idea.id} rejected; the scout will not pitch it again.`,
     },
   );
 }
@@ -1600,11 +1713,23 @@ function buildTaskBoardRows(): TaskBoardRow[] {
   const active = orderedActiveTasks();
   const blocked = state.board.tasks.filter((task) => task.status === "blocked");
   const done = state.board.tasks.filter((task) => task.status === "done");
-  return [
+  const rows = [
     ...taskSectionRows("Working / Ready", active, "No active tasks."),
     ...taskSectionRows("Needs Input", blocked, "Nothing needs input."),
     ...taskSectionRows("Done", done, "No completed tasks yet."),
   ];
+  if (state.board.ideas.length) {
+    rows.push({ content: " Ideas (scout)", task: null });
+    rows.push(...state.board.ideas.map((idea) => ({
+      content: `${idea.id === state.selectedIdeaId ? ">" : " "} ◇ ${idea.id} ${
+        short(idea.title, 30)
+      }`,
+      task: null,
+      idea,
+    })));
+    rows.push({ content: "", task: null });
+  }
+  return rows;
 }
 
 function taskSectionRows(title: string, tasks: Task[], empty: string): TaskBoardRow[] {
@@ -1632,6 +1757,9 @@ function mainThreadLines(): string[] {
     state.runtime?.planner?.enabled
       ? `Planner: ${state.runtime.planner.backend}`
       : "Planner: main backend",
+    state.runtime?.scout?.enabled
+      ? `Scout: ${state.runtime.scout.backend} (${state.board.ideas.length} ideas pending)`
+      : "Scout: off",
     "",
     `Memory thread: ${state.board.projectState.mainThreadId ?? "not started"}`,
     `Created: ${state.board.projectState.mainThreadCreatedAt ?? "not started"}`,
@@ -1714,7 +1842,37 @@ function statusHeadline(): string {
 }
 
 function selectedTask(): Task | null {
+  if (state.selectedIdeaId) {
+    return null;
+  }
   return state.board.tasks.find((task) => task.id === state.selectedTaskId) ?? null;
+}
+
+function selectedIdea(): IdeaLite | null {
+  return state.board.ideas.find((idea) => idea.id === state.selectedIdeaId) ?? null;
+}
+
+function selectIdea(ideaId: string): void {
+  const idea = state.board.ideas.find((item) => item.id === ideaId);
+  if (idea) {
+    state.selectedIdeaId = idea.id;
+    state.scroll.taskDetails = 0;
+    state.notice = `Idea ${idea.id}: approve with y, reject with n.`;
+  }
+}
+
+function ideaDetails(idea: IdeaLite): string[] {
+  return [
+    `${idea.id}  ${idea.title}`,
+    idea.buildsOn ? `Builds on: ${idea.buildsOn}` : "",
+    "",
+    ...idea.pitch.split("\n").flatMap((line) => wrap(line, 44)),
+    ...(idea.sources.length ? ["", "Sources:", ...idea.sources.map((url) => `- ${url}`)] : []),
+    "",
+    "Approve (y) compiles this into a goal with tasks",
+    "and win conditions in Ready. Reject (n) removes it",
+    "and the scout never re-pitches it.",
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "");
 }
 
 function ensureSelection(): void {
@@ -1725,16 +1883,21 @@ function ensureSelection(): void {
 }
 
 function moveSelection(delta: number): void {
-  if (!state.board.tasks.length) {
+  const items: Array<{ kind: "task" | "idea"; id: string }> = [
+    ...orderedTasks().map((task) => ({ kind: "task" as const, id: task.id })),
+    ...state.board.ideas.map((idea) => ({ kind: "idea" as const, id: idea.id })),
+  ];
+  if (!items.length) {
     return;
   }
-  const tasks = orderedTasks();
-  const current = Math.max(
-    0,
-    tasks.findIndex((task) => task.id === state.selectedTaskId),
-  );
-  const next = (current + delta + tasks.length) % tasks.length;
-  state.selectedTaskId = tasks[next].id;
+  const selectedId = state.selectedIdeaId ?? state.selectedTaskId;
+  const current = Math.max(0, items.findIndex((item) => item.id === selectedId));
+  const next = items[(current + delta + items.length) % items.length];
+  if (next.kind === "idea") {
+    selectIdea(next.id);
+  } else {
+    selectTask(next.id);
+  }
 }
 
 function openPrompt(mode: AppState["promptMode"], notice: string): void {
@@ -2006,6 +2169,7 @@ function selectTask(taskId: string): void {
       state.scroll.taskDetails = 0;
     }
     state.selectedTaskId = task.id;
+    state.selectedIdeaId = null;
     state.notice = `Selected ${task.id}.`;
   }
 }

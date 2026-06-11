@@ -334,6 +334,21 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
     const off = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
     assertEquals(off.planner.enabled, false);
     assertEquals(off.planner.backend, "claude");
+
+    const scout = await run("--scout", "local", "--search", "http://127.0.0.1:8888");
+    assertEquals(scout.code, 0, new TextDecoder().decode(scout.stderr));
+    const scoutNotice = new TextDecoder().decode(scout.stderr);
+    assertStringIncludes(scoutNotice, "GoalForge scout: local");
+    assertStringIncludes(scoutNotice, "web search endpoint: http://127.0.0.1:8888");
+    const scouted = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(scouted.scout, { enabled: true, backend: "local" });
+    assertEquals(scouted.search.endpoint, "http://127.0.0.1:8888");
+
+    const scoutOff = await run("--scout", "off", "--search", "off");
+    assertStringIncludes(new TextDecoder().decode(scoutOff.stderr), "scout: off");
+    const cleared = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
+    assertEquals(cleared.scout.enabled, false);
+    assertEquals(cleared.search.endpoint, "");
   } finally {
     Deno.removeSync(root, { recursive: true });
     Deno.removeSync(home, { recursive: true });

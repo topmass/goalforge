@@ -32,6 +32,13 @@ export interface GlobalConfig {
     enabled: boolean;
     backend: AgentBackend;
   };
+  scout: {
+    enabled: boolean;
+    backend: AgentBackend;
+  };
+  search: {
+    endpoint: string;
+  };
 }
 
 export interface GlobalConfigPatch {
@@ -41,6 +48,8 @@ export interface GlobalConfigPatch {
   claude?: Partial<GlobalConfig["claude"]>;
   rescue?: Partial<GlobalConfig["rescue"]>;
   planner?: Partial<GlobalConfig["planner"]>;
+  scout?: Partial<GlobalConfig["scout"]>;
+  search?: Partial<GlobalConfig["search"]>;
 }
 
 export function goalforgeHome(): string {
@@ -80,6 +89,13 @@ export function defaultGlobalConfig(): GlobalConfig {
       enabled: false,
       backend: "codex",
     },
+    scout: {
+      enabled: false,
+      backend: "codex",
+    },
+    search: {
+      endpoint: "",
+    },
   };
 }
 
@@ -114,6 +130,15 @@ export function readGlobalConfig(): GlobalConfig {
       enabled: record(parsed.planner).enabled === true,
       backend: normalizeBackend(record(parsed.planner).backend, defaults.planner.backend),
     },
+    scout: {
+      enabled: record(parsed.scout).enabled === true,
+      backend: normalizeBackend(record(parsed.scout).backend, defaults.scout.backend),
+    },
+    search: {
+      endpoint: typeof record(parsed.search).endpoint === "string"
+        ? (record(parsed.search).endpoint as string).trim()
+        : defaults.search.endpoint,
+    },
   };
 }
 
@@ -130,6 +155,8 @@ export function updateGlobalConfig(patch: GlobalConfigPatch): GlobalConfig {
     claude: { ...current.claude, ...patch.claude },
     rescue: { ...current.rescue, ...patch.rescue },
     planner: { ...current.planner, ...patch.planner },
+    scout: { ...current.scout, ...patch.scout },
+    search: { ...current.search, ...patch.search },
   };
   Deno.mkdirSync(goalforgeHome(), { recursive: true });
   Deno.writeTextFileSync(globalConfigPath(), `${JSON.stringify(next, null, 2)}\n`);

@@ -13,6 +13,7 @@ import { CodexClient } from "../workers/codex_app_server.ts";
 import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalPursuer } from "../workers/goal_pursuer.ts";
+import { runScout } from "../workers/goal_scout.ts";
 import { runGoalProbes } from "../workers/goal_probes.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
@@ -34,6 +35,11 @@ export interface GoalForgeServerOptions {
       event: ActivityEventInput,
     ) => void,
   ) => CodexClient;
+  createScoutClient?: (
+    onEvent: (
+      event: ActivityEventInput,
+    ) => void,
+  ) => CodexClient;
 }
 
 const APP_ROOT = path.normalize(decodeURIComponent(new URL("../../", import.meta.url).pathname));
@@ -51,6 +57,7 @@ export function startServer(
   const encoder = new TextEncoder();
   let queueRunning = false;
   let pursueRunning = false;
+  let scoutRunning = false;
 
   const send = (client: Client, type: string, payload: unknown) => {
     try {
@@ -151,6 +158,8 @@ export function startServer(
             config: readConfig(normalizedRoot),
             rescue: readGlobalConfig().rescue,
             planner: readGlobalConfig().planner,
+            scout: readGlobalConfig().scout,
+            search: readGlobalConfig().search,
             workflow: readWorkflow(normalizedRoot),
             projectState: board.projectState,
             runningRuns: board.runs.filter((run) => run.status === "running"),
@@ -475,6 +484,102 @@ export function startServer(
           }]);
           broadcastBoard();
           return json(result, 201);
+        }
+
+        if (url.pathname === "/api/ideas" && request.method === "GET") {
+          return json(store.listIdeas("proposed"));
+        }
+
+        const ideaAction = url.pathname.match(/^\/api\/ideas\/([^/]+)\/(approve|reject)$/);
+        if (ideaAction && request.method === "POST") {
+          const [, ideaId, action] = ideaAction;
+          if (action === "reject") {
+            const idea = store.setIdeaStatus(ideaId, "rejected");
+            broadcastActivity(
+              store.appendEvent(null, null, "scout", "idea", `${idea.id} rejected: ${idea.title}`),
+            );
+            broadcastBoard();
+            return json(idea);
+          }
+          const idea = store.setIdeaStatus(ideaId, "approved");
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "scout",
+              "idea",
+              `${idea.id} approved: ${idea.title}. Compiling it into a goal.`,
+            ),
+          );
+          const planner = new GoalPlanner(normalizedRoot, {
+            createCodexClient: options.createCodexClient,
+            onEvent: (event) => {
+              const activity = store.appendAgentEvent(event);
+              broadcastActivity(activity);
+            },
+          });
+          const ideaText = `${idea.title}\n\n${idea.pitch}${
+            idea.sources.length ? `\n\nReference links:\n${idea.sources.join("\n")}` : ""
+          }`;
+          const plan = await planner.planGoal(ideaText);
+          const result = store.createGoalWithTasks(ideaText, plan.tasks, {
+            completionContract: plan.completionContract,
+            probes: plan.probes,
+          });
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "scout",
+              "idea",
+              `${idea.id} became ${result.goal.id} with ${result.tasks.length} task${
+                result.tasks.length === 1 ? "" : "s"
+              } in Ready.`,
+            ),
+          );
+          broadcastBoard();
+          return json({ idea, ...result }, 201);
+        }
+
+        if (url.pathname === "/api/scout/run" && request.method === "POST") {
+          if (scoutRunning) {
+            return json({ error: "A scout pass is already running." }, 409);
+          }
+          scoutRunning = true;
+          try {
+            const report = await runScout(normalizedRoot, store, {
+              onEvent: broadcastActivity,
+              createScoutClient: options.createScoutClient,
+            });
+            broadcastBoard();
+            return json(report);
+          } finally {
+            scoutRunning = false;
+          }
+        }
+
+        if (url.pathname === "/api/scout" && request.method === "PATCH") {
+          const body = await readJson<{ enabled?: boolean; backend?: string }>(request);
+          const updated = updateGlobalConfig({
+            scout: {
+              ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+              ...(typeof body.backend === "string" && body.backend.trim()
+                ? { backend: normalizeBackend(body.backend.trim(), "codex") }
+                : {}),
+            },
+          });
+          broadcastActivity(
+            store.appendEvent(
+              null,
+              null,
+              "scout",
+              "config",
+              updated.scout.enabled
+                ? `Scout armed: ${updated.scout.backend} proposes ideas for review.`
+                : "Scout off.",
+            ),
+          );
+          return json(updated.scout);
         }
 
         if (url.pathname === "/api/goals/plan" && request.method === "POST") {

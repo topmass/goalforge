@@ -177,6 +177,28 @@ export interface Lesson {
   createdAt: string;
 }
 
+export type IdeaStatus = "proposed" | "approved" | "rejected";
+
+export interface Idea {
+  id: string;
+  title: string;
+  pitch: string;
+  sources: string[];
+  buildsOn: string;
+  rank: number;
+  status: IdeaStatus;
+  fingerprint: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IdeaDraft {
+  title: string;
+  pitch: string;
+  sources?: string[];
+  buildsOn?: string;
+}
+
 export const EXTERNAL_AGENT_STATES = ["working", "blocked", "done", "idle"] as const;
 
 export type ExternalAgentState = typeof EXTERNAL_AGENT_STATES[number];
@@ -231,6 +253,7 @@ export interface BoardSnapshot {
   externalAgents: ExternalAgentStatus[];
   probes: GoalProbe[];
   lessons: Lesson[];
+  ideas: Idea[];
   messages: QueuedMessage[];
   events: ActivityEvent[];
   statuses: { id: TaskStatus; label: string }[];

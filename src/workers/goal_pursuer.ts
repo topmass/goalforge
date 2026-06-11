@@ -14,6 +14,7 @@ import { fingerprintBlocker } from "./blocker_triage.ts";
 import { CodexClient } from "./codex_app_server.ts";
 import { parsePlannerResponse } from "./goal_planner.ts";
 import { probeLights, runGoalProbes } from "./goal_probes.ts";
+import { runScout } from "./goal_scout.ts";
 import { GoalForgeWorker } from "./goalforge_worker.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
@@ -55,6 +56,7 @@ export class GoalPursuer {
     let lastFailureFingerprint = "";
     let escalated = false;
     let replanned = false;
+    let lastScoutAt = Date.now();
 
     for (let iteration = 1; iteration <= maxIterations; iteration++) {
       if (Date.now() >= deadline) {
@@ -68,6 +70,20 @@ export class GoalPursuer {
 
       await this.runGoalTasks(goalId, escalated, deadline);
       escalated = false;
+
+      // Long runs feed the idea list too: one scout pass per hour, never fatal.
+      if (Date.now() - lastScoutAt >= 3_600_000) {
+        lastScoutAt = Date.now();
+        try {
+          await runScout(this.root, this.store, { onEvent: this.options.onEvent });
+        } catch (error) {
+          this.emit(
+            goalId,
+            "scout",
+            `Scout pass failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
 
       const probeSummary = await runGoalProbes(this.root, this.store, goalId);
       if (probeSummary.total) {

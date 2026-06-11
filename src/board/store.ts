@@ -27,6 +27,9 @@ import {
   Goal,
   GoalProbe,
   GoalProbeDraft,
+  Idea,
+  IdeaDraft,
+  IdeaStatus,
   Lesson,
   OPS_ACTIONS,
   OpsAction,
@@ -261,6 +264,7 @@ export class BoardStore {
       externalAgents: this.listExternalAgents(),
       probes: this.listProbes(),
       lessons: this.listLessons(20),
+      ideas: this.listIdeas("proposed"),
       messages: this.listMessages(),
       events: this.listEvents(250),
       statuses: TASK_STATUSES.map((id) => ({ id, label: TASK_STATUS_LABELS[id] })),
@@ -681,6 +685,88 @@ export class BoardStore {
         createdAt: String(row.created_at),
       }))
       .reverse();
+  }
+
+  // Scout ideas: rejected ideas keep their fingerprints forever so the same
+  // idea can never be re-pitched; ranks come from the scout's ordering.
+  addIdeas(drafts: IdeaDraft[]): Idea[] {
+    const added: Idea[] = [];
+    for (const draft of drafts) {
+      const title = draft.title.replace(/\s+/g, " ").trim().slice(0, 160);
+      const pitch = draft.pitch.trim().slice(0, 4000);
+      if (!title || !pitch) {
+        continue;
+      }
+      const fingerprint = ideaFingerprint(title);
+      const existing = this.db.prepare("SELECT id FROM ideas WHERE fingerprint = ?").get(
+        fingerprint,
+      ) as SqlRow | undefined;
+      if (existing) {
+        continue;
+      }
+      const id = this.nextHumanId("IDEA", "ideas");
+      const now = timestamp();
+      this.db.prepare(
+        `INSERT INTO ideas (id, title, pitch, sources, builds_on, rank, status, fingerprint, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?)`,
+      ).run(
+        id,
+        title,
+        pitch,
+        (draft.sources ?? []).join("\n"),
+        (draft.buildsOn ?? "").trim().slice(0, 160),
+        this.listIdeas("proposed").length + added.length + 1,
+        fingerprint,
+        now,
+        now,
+      );
+      added.push(this.getIdea(id));
+    }
+    return added;
+  }
+
+  listIdeas(status?: IdeaStatus): Idea[] {
+    const rows = status
+      ? this.db.prepare("SELECT * FROM ideas WHERE status = ? ORDER BY rank ASC, id ASC").all(
+        status,
+      )
+      : this.db.prepare("SELECT * FROM ideas ORDER BY rank ASC, id ASC").all();
+    return (rows as SqlRow[]).map(ideaFromRow);
+  }
+
+  getIdea(ideaId: string): Idea {
+    const row = this.db.prepare("SELECT * FROM ideas WHERE id = ?").get(ideaId) as
+      | SqlRow
+      | undefined;
+    if (!row) {
+      throw new Error(`Idea ${ideaId} was not found.`);
+    }
+    return ideaFromRow(row);
+  }
+
+  setIdeaStatus(ideaId: string, status: IdeaStatus): Idea {
+    this.getIdea(ideaId);
+    this.db.prepare("UPDATE ideas SET status = ?, updated_at = ? WHERE id = ?").run(
+      status,
+      timestamp(),
+      ideaId,
+    );
+    return this.getIdea(ideaId);
+  }
+
+  // The scout re-ranks pending ideas each run; unknown ids are ignored and
+  // unmentioned pending ideas keep their relative order after the ranked ones.
+  applyIdeaOrder(orderedIds: string[]): void {
+    const pending = this.listIdeas("proposed");
+    const ranked = orderedIds.filter((id) => pending.some((idea) => idea.id === id));
+    const rest = pending.filter((idea) => !ranked.includes(idea.id)).map((idea) => idea.id);
+    [...ranked, ...rest].forEach((id, index) => {
+      this.db.prepare("UPDATE ideas SET rank = ?, updated_at = ? WHERE id = ?").run(
+        index + 1,
+        timestamp(),
+        id,
+      );
+    });
   }
 
   recordTriageAttempt(taskId: string, fingerprint: string): Task {
@@ -1298,6 +1384,19 @@ export class BoardStore {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS ideas (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        pitch TEXT NOT NULL,
+        sources TEXT NOT NULL DEFAULT '',
+        builds_on TEXT NOT NULL DEFAULT '',
+        rank INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'proposed',
+        fingerprint TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS external_agents (
         id TEXT PRIMARY KEY,
         agent TEXT NOT NULL,
@@ -1392,13 +1491,13 @@ export class BoardStore {
     ).all(limit) as SqlRow[]).map(eventFromRow).reverse();
   }
 
-  private nextHumanId(prefix: string, table: "goals" | "tasks"): string {
+  private nextHumanId(prefix: string, table: "goals" | "tasks" | "ideas"): string {
     return `${prefix}-${this.maxIdNumber(table) + 1}`;
   }
 
   // Ids must survive deletions (Clear Done, manual deletes), so number from the
   // highest existing suffix rather than the row count.
-  private maxIdNumber(table: "goals" | "tasks"): number {
+  private maxIdNumber(table: "goals" | "tasks" | "ideas"): number {
     const rows = this.db.prepare(`SELECT id FROM ${table}`).all() as Array<{ id: string }>;
     let max = 0;
     for (const row of rows) {
@@ -1808,6 +1907,26 @@ function messageFromRow(row: SqlRow): QueuedMessage {
     processed: Boolean(row.processed),
     createdAt: String(row.created_at),
   };
+}
+
+function ideaFromRow(row: SqlRow): Idea {
+  const status = String(row.status ?? "proposed");
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    pitch: String(row.pitch),
+    sources: String(row.sources ?? "").split("\n").map((item) => item.trim()).filter(Boolean),
+    buildsOn: String(row.builds_on ?? ""),
+    rank: Number(row.rank ?? 0),
+    status: status === "approved" || status === "rejected" ? status : "proposed",
+    fingerprint: String(row.fingerprint),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+export function ideaFingerprint(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, "-").slice(0, 120);
 }
 
 function probeFromRow(row: SqlRow): GoalProbe {

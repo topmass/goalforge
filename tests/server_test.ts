@@ -363,6 +363,129 @@ Deno.test("server updates planner routing and max concurrent agents", async () =
   }
 });
 
+Deno.test("server runs the scout and gatekeeps ideas through approve and reject", async () => {
+  const root = Deno.makeTempDirSync();
+  const port = 50533 + Math.floor(Math.random() * 300);
+  const scoutJson = JSON.stringify({
+    ideas: [
+      {
+        title: "Add a changelog page",
+        pitch: "**What:** changelog. **Why it's cool:** visibility. **Why now:** momentum.",
+        sources: [],
+        buildsOn: "",
+      },
+      {
+        title: "Add release tagging",
+        pitch: "**What:** tags. **Why it's cool:** traceability. **Why now:** pairs.",
+        sources: [],
+        buildsOn: "Add a changelog page",
+      },
+    ],
+    order: ["Add a changelog page", "Add release tagging"],
+  });
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new TestCodexClient(onEvent),
+    createScoutClient: (onEvent) => new ScoutStubClient(onEvent, scoutJson),
+  });
+  try {
+    const scoutPatch = await fetch(`${server.url}/api/scout`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: true, backend: "codex" }),
+    }).then((response) => response.json());
+    assertEquals(scoutPatch, { enabled: true, backend: "codex" });
+
+    const report = await fetch(`${server.url}/api/scout/run`, { method: "POST" })
+      .then((response) => response.json());
+    assertEquals(report.ran, true);
+    assertEquals(report.added.length, 2);
+
+    const ideas = await fetch(`${server.url}/api/ideas`).then((response) => response.json());
+    assertEquals(ideas.length, 2);
+    assertEquals(ideas[0].title, "Add a changelog page");
+
+    const rejected = await fetch(`${server.url}/api/ideas/${ideas[1].id}/reject`, {
+      method: "POST",
+    }).then((response) => response.json());
+    assertEquals(rejected.status, "rejected");
+
+    const approved = await fetch(`${server.url}/api/ideas/${ideas[0].id}/approve`, {
+      method: "POST",
+    }).then((response) => response.json());
+    assertEquals(approved.idea.status, "approved");
+    assert(approved.goal.id.startsWith("GOAL-"));
+    assert(approved.tasks.length >= 1);
+
+    const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+    assertEquals(board.ideas.length, 0);
+    assert(board.goals.some((goal: { text: string }) => goal.text.includes("changelog")));
+  } finally {
+    await fetch(`${server.url}/api/scout`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    }).then((response) => response.json());
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+class ScoutStubClient implements CodexClient {
+  constructor(
+    private readonly onEvent: (event: {
+      taskId: string | null;
+      runId: string | null;
+      role: string;
+      kind: string;
+      message: string;
+    }) => void,
+    private readonly response: string,
+  ) {}
+
+  startSession(cwd: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId: "thread-scout-stub", cwd });
+  }
+
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId, cwd });
+  }
+
+  readThread(session: CodexSession): Promise<CodexThreadReadResult> {
+    return Promise.resolve({
+      threadId: session.threadId,
+      name: "scout",
+      status: "idle",
+      turnCount: 0,
+      raw: {},
+    });
+  }
+
+  compactThread(_session: CodexSession): Promise<void> {
+    return Promise.resolve();
+  }
+
+  runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    this.onEvent({
+      taskId: null,
+      runId: null,
+      role: "codex",
+      kind: "agent",
+      message: this.response,
+    });
+    return Promise.resolve({
+      threadId: session.threadId,
+      turnId: "turn-scout-stub",
+      status: "completed",
+      completed: true,
+    });
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 interface BoardResponse {
   goals: Array<{ id: string; status: string; closureSummary: string; completionContract: string }>;
   tasks: Array<{ status: string; validation: string }>;

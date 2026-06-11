@@ -7,6 +7,7 @@ import { startServer } from "./web/server.ts";
 import { runCommandCenterTui } from "./tui/command_center.ts";
 import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
+import { runScout } from "./workers/goal_scout.ts";
 import { GoalPursuer } from "./workers/goal_pursuer.ts";
 import { formatProbeLines, probeLights, runGoalProbes } from "./workers/goal_probes.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
@@ -124,6 +125,12 @@ try {
       break;
     case "standup":
       standupCommand();
+      break;
+    case "scout":
+      await scoutCommand();
+      break;
+    case "ideas":
+      await ideasCommand(args);
       break;
     case undefined:
     case "-h":
@@ -494,6 +501,109 @@ function lessonCommand(args: string[]): void {
   });
 }
 
+async function scoutCommand(): Promise<void> {
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    const report = await runScout(root, store, {
+      onEvent: (event) => console.error(`[${event.role}] ${event.message.slice(0, 160)}`),
+    });
+    if (!report.ran) {
+      console.log(`Scout did not run: ${report.reason}`);
+      if (!readGlobalConfig().scout.enabled) {
+        console.log("Arm it with: goalforge --scout codex (or claude, local, pi)");
+      }
+      return;
+    }
+    console.log(
+      report.added.length
+        ? `Scout proposed ${report.added.length} idea${report.added.length === 1 ? "" : "s"}:`
+        : "Scout proposed nothing new this pass.",
+    );
+    for (const idea of report.added) {
+      console.log(`- ${idea.id}: ${idea.title}`);
+    }
+    if (report.added.length) {
+      console.log("Review with: goalforge ideas");
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function ideasCommand(commandArgs: string[]): Promise<void> {
+  const [action, ideaId] = commandArgs;
+  if (action === "approve" && ideaId) {
+    const store = new BoardStore(root);
+    try {
+      store.initProject();
+      const idea = store.setIdeaStatus(ideaId, "approved");
+      console.log(`${idea.id} approved: ${idea.title}`);
+      console.log("Compiling it into a goal...");
+      const planner = new GoalPlanner(root, {
+        projectMemory: buildProjectMemory(store),
+        onEvent: (event) => {
+          store.appendAgentEvent(event);
+        },
+      });
+      const ideaText = `${idea.title}\n\n${idea.pitch}${
+        idea.sources.length ? `\n\nReference links:\n${idea.sources.join("\n")}` : ""
+      }`;
+      const plan = await planner.planGoal(ideaText);
+      const result = store.createGoalWithTasks(ideaText, plan.tasks, {
+        completionContract: plan.completionContract,
+        probes: plan.probes,
+      });
+      console.log(
+        `${idea.id} became ${result.goal.id} with ${result.tasks.length} task${
+          result.tasks.length === 1 ? "" : "s"
+        } in Ready. Run them with: goalforge run`,
+      );
+    } finally {
+      store.close();
+    }
+    return;
+  }
+  usingStore((store) => {
+    if (action === "reject" && ideaId) {
+      const idea = store.setIdeaStatus(ideaId, "rejected");
+      console.log(`${idea.id} rejected and remembered; the scout will not re-pitch it.`);
+      return;
+    }
+    if (action === "show" && ideaId) {
+      const idea = store.getIdea(ideaId);
+      console.log(`${idea.id}: ${idea.title} [${idea.status}]`);
+      if (idea.buildsOn) {
+        console.log(`Builds on: ${idea.buildsOn}`);
+      }
+      console.log("");
+      console.log(idea.pitch);
+      if (idea.sources.length) {
+        console.log("");
+        console.log("Sources:");
+        for (const source of idea.sources) {
+          console.log(`- ${source}`);
+        }
+      }
+      return;
+    }
+    if (action && action !== "list") {
+      throw new Error("Usage: goalforge ideas [list | show <id> | approve <id> | reject <id>]");
+    }
+    const ideas = store.listIdeas("proposed");
+    if (!ideas.length) {
+      console.log("No ideas awaiting review. Run the scout with: goalforge scout");
+      return;
+    }
+    console.log("Ideas awaiting review (in recommended build order):");
+    for (const idea of ideas) {
+      console.log(`${idea.rank}. ${idea.id}: ${idea.title}`);
+    }
+    console.log("");
+    console.log("goalforge ideas show <id> | approve <id> | reject <id>");
+  });
+}
+
 function standupCommand(): void {
   usingStore((store) => {
     const board = store.getBoard();
@@ -521,6 +631,16 @@ function standupCommand(): void {
       }
     } else {
       console.log("- nothing");
+    }
+    console.log("");
+    console.log("Scout ideas awaiting review:");
+    if (board.ideas.length) {
+      for (const idea of board.ideas) {
+        console.log(`- ${idea.id}: ${idea.title}`);
+      }
+      console.log("  (goalforge ideas show <id> | approve <id> | reject <id>)");
+    } else {
+      console.log("- none");
     }
     console.log("");
     console.log("Win conditions:");
@@ -574,6 +694,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
   let rescue: string | null = null;
   let rescueAfter: number | null = null;
   let planner: string | null = null;
+  let scout: string | null = null;
+  let search: string | null = null;
   for (let index = 0; index < rawArgs.length; index++) {
     const arg = rawArgs[index];
     if (arg === "--codex" || arg === "--pi" || arg === "--claude" || arg === "--local") {
@@ -588,6 +710,10 @@ function applyBackendFlags(rawArgs: string[]): string[] {
       rescueAfter = Number(rawArgs[++index]);
     } else if (arg === "--planner") {
       planner = rawArgs[++index] ?? null;
+    } else if (arg === "--scout") {
+      scout = rawArgs[++index] ?? null;
+    } else if (arg === "--search") {
+      search = rawArgs[++index] ?? null;
     } else {
       remaining.push(arg);
     }
@@ -621,6 +747,28 @@ function applyBackendFlags(rawArgs: string[]): string[] {
       config.planner.enabled
         ? `GoalForge planner model: ${config.planner.backend} compiles and replans goals (saved)`
         : "GoalForge planner model: off; planning follows the main backend (saved)",
+    );
+  }
+  if (scout) {
+    const config = updateGlobalConfig({
+      scout: scout === "off"
+        ? { enabled: false }
+        : { enabled: true, backend: normalizeBackend(scout, "codex") },
+    });
+    console.error(
+      config.scout.enabled
+        ? `GoalForge scout: ${config.scout.backend} proposes ideas for you to approve or reject (saved)`
+        : "GoalForge scout: off (saved)",
+    );
+  }
+  if (search) {
+    const config = updateGlobalConfig({
+      search: { endpoint: search === "off" ? "" : search },
+    });
+    console.error(
+      config.search.endpoint
+        ? `GoalForge web search endpoint: ${config.search.endpoint} (saved; agents search via curl)`
+        : "GoalForge web search: off (saved)",
     );
   }
   if (!backend && !endpoint && !model) {
@@ -1094,6 +1242,16 @@ function doctorCommand(): void {
       ? `planner: ${config.planner.backend} compiles and replans goals`
       : "planner: off (route with --planner codex or the TUI Planner button)",
   );
+  console.log(
+    config.scout.enabled
+      ? `scout: ${config.scout.backend} proposes ideas (you approve or reject them)`
+      : "scout: off (arm with --scout codex or the TUI Scout button)",
+  );
+  console.log(
+    config.search.endpoint
+      ? `search: ${config.search.endpoint} (SearXNG-style JSON endpoint for agent web searches)`
+      : "search: not configured (set with --search http://127.0.0.1:8888 for local-model web search)",
+  );
   const missingRequired = checks.filter((check) => check.label === "Git" && !check.path);
   for (const check of checks) {
     const ok = check.ok ?? Boolean(check.path);
@@ -1159,6 +1317,8 @@ Usage:
   goalforge check [GOAL-ID]
   goalforge pursue [GOAL-ID | --all] [--hours N] [--iterations N] [--escalate codex]
   goalforge lesson ["text to remember"]
+  goalforge scout                            # one scout pass: propose ideas now
+  goalforge ideas [show|approve|reject <id>] # review the idea list (you gatekeep)
   goalforge standup
 
 Target directory (any command):
@@ -1182,6 +1342,12 @@ Planner model (saved; also a toggle button in the TUI footer):
   --planner <codex|claude|local|pi|off>  Route goal planning and pursue replans to a
                                          stronger model while workers stay on the
                                          main backend
+
+Scout (saved; proposes ideas, you stay the gatekeeper):
+  --scout <codex|claude|local|pi|off>    A scout studies the project and proposes
+                                         next ideas; nothing runs until you approve
+  --search <url|off>                     SearXNG-style endpoint agents use for web
+                                         searches via curl (works on every backend)
 
 Running goalforge with no command opens the TUI.
 `);
