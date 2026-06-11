@@ -12,7 +12,7 @@ import {
   worktreesPath,
 } from "../paths.ts";
 import { PROMPTS } from "./prompts.ts";
-import { ensureWorkflow } from "../workflow/workflow.ts";
+import { ensureAgentContext, ensureWorkflow } from "../workflow/workflow.ts";
 import { summarizeGoalProgress } from "./goal_progress.ts";
 import {
   ActivityEvent,
@@ -94,6 +94,7 @@ export class BoardStore {
     ensureRuntimeDirectories(this.root);
     this.ensureSchema();
     ensureWorkflow(this.root);
+    ensureAgentContext(this.root);
     ensureConfig(this.root);
     ensurePrompts(this.root);
     ensureGitignore(this.root);

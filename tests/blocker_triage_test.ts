@@ -1,5 +1,11 @@
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { fingerprintBlocker, parseTriageResponse } from "../src/workers/blocker_triage.ts";
+import { assertStringIncludes } from "@std/assert";
+import {
+  buildTriagePrompt,
+  fingerprintBlocker,
+  parseTriageResponse,
+} from "../src/workers/blocker_triage.ts";
+import type { Task } from "../src/board/types.ts";
 
 Deno.test("triage parser accepts resolve with an allowed action", () => {
   const decision = parseTriageResponse(
@@ -54,4 +60,23 @@ Deno.test("blocker fingerprints ignore volatile details but track real differenc
   const different = fingerprintBlocker("NEEDS_INPUT missing CLERK_SECRET_KEY for Clerk setup.");
   assertNotEquals(first, different);
   assert(first.length <= 240);
+});
+
+Deno.test("triage prompt frames autonomy and forbids escalating manual-QA blockers", () => {
+  const prompt = buildTriagePrompt({
+    task: {
+      id: "TASK-9",
+      title: "Fix shop rebuy",
+      description: "Patch the rebuy handler.",
+      triageAttempts: 0,
+    } as Task,
+    blocker: "I cannot test this change in the running game.",
+    allowedActions: ["publish"],
+    projectMemory: "none",
+    workflowInstructions: "none",
+  });
+  assertStringIncludes(prompt, "pseudo-autonomously");
+  assertStringIncludes(prompt, "never escalations");
+  assertStringIncludes(prompt, "needs manual verification");
+  assertStringIncludes(prompt, "not an escalation");
 });

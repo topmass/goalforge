@@ -1,5 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { parseVerificationResponse } from "../src/workers/goal_test_engineer.ts";
+import { GoalTestEngineer, parseVerificationResponse } from "../src/workers/goal_test_engineer.ts";
+import type { CodexSession, CodexTurnResult } from "../src/workers/codex_app_server.ts";
+import type { Task } from "../src/board/types.ts";
 
 Deno.test("verification parser requires explicit pass verdict", () => {
   const result = parseVerificationResponse("VERIFICATION_PASSED\n- deno test passed.");
@@ -62,4 +64,31 @@ Deno.test("verification accepts narrated and emphasized verdicts but fails close
     "I will answer VERIFICATION_PASSED or VERIFICATION_FAILED. VERIFICATION_PASSED maybe.",
   );
   assertEquals(conflicting.verdict, "failed");
+});
+
+Deno.test("test engineer prompt reserves NEEDS_INPUT for absolute blockers", async () => {
+  const engineer = new GoalTestEngineer("", "", "", "");
+  let captured = "";
+  const client = {
+    runTurn: (_session: CodexSession, input: { title: string; prompt: string }) => {
+      captured = input.prompt;
+      return Promise.resolve({} as CodexTurnResult);
+    },
+  };
+  await engineer.run(
+    client,
+    {} as CodexSession,
+    {
+      id: "TASK-9",
+      title: "Fix shop rebuy",
+      description: "Patch the rebuy handler.",
+      riskLevel: "low",
+      dependencyIds: [],
+      acceptanceCriteria: "",
+      verificationPlan: "",
+    } as unknown as Task,
+  );
+  assertStringIncludes(captured, "Autonomous Operation");
+  assertStringIncludes(captured, "never NEEDS_INPUT");
+  assertStringIncludes(captured, "needs manual verification");
 });

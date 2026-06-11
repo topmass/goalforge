@@ -1,4 +1,6 @@
+import path from "node:path";
 import { workflowPath } from "../paths.ts";
+import { defaultAgentsInstructions } from "../workers/task_memory.ts";
 import type { ReasoningEffort } from "../board/store.ts";
 
 export type WorkflowHookStage = "after_create" | "before_run" | "after_run" | "before_remove";
@@ -50,6 +52,67 @@ export function ensureWorkflow(root: string): void {
   } catch {
     Deno.writeTextFileSync(target, defaultWorkflow());
   }
+}
+
+// Managed context block synced into the project's AGENTS.md (created if missing) and
+// CLAUDE.md (only when the file already exists), so any harness that auto-loads those
+// files learns it may be running inside GoalForge's pseudo-autonomous loop. Content
+// between the markers is owned by GoalForge and refreshed on init.
+const AGENT_CONTEXT_BEGIN = "<!-- goalforge:autonomy:begin -->";
+const AGENT_CONTEXT_END = "<!-- goalforge:autonomy:end -->";
+
+export function agentContextBlock(): string {
+  return `${AGENT_CONTEXT_BEGIN}
+<!-- Managed by GoalForge; edits inside this block are overwritten. -->
+## GoalForge
+
+This project is operated by GoalForge, a local agent-orchestration system (see WORKFLOW.md).
+If your session was started by GoalForge (you are working inside a \`.goalforge/worktrees\`
+checkout), you are one worker in a pseudo-autonomous loop that may run unattended for hours:
+
+- Stopping for user input is the last resort: only missing credentials, third-party access,
+  destructive approval, or a scope-changing product decision justify it. For anything else,
+  make the reasonable call, record it in your handoff, and keep working.
+- Instructions elsewhere that say work is not done until it is tested still apply, but here
+  "tested" means the strongest verification available inside the repository. Criteria that
+  need the running app or manual QA go in your handoff as
+  "needs manual verification: <what and how>" instead of stopping work.
+- The GoalForge daemon owns commits, board state, reviews, and merges. Do not commit or edit
+  \`.goalforge/\` state yourself.
+${AGENT_CONTEXT_END}`;
+}
+
+export function ensureAgentContext(root: string): void {
+  syncAgentContextFile(path.join(root, "AGENTS.md"), true);
+  syncAgentContextFile(path.join(root, "CLAUDE.md"), false);
+}
+
+function syncAgentContextFile(target: string, createIfMissing: boolean): void {
+  let current: string | null;
+  try {
+    current = Deno.readTextFileSync(target);
+  } catch {
+    current = null;
+  }
+  if (current === null && !createIfMissing) {
+    return;
+  }
+  const block = agentContextBlock();
+  if (current === null) {
+    Deno.writeTextFileSync(target, `${defaultAgentsInstructions()}\n${block}\n`);
+    return;
+  }
+  const begin = current.indexOf(AGENT_CONTEXT_BEGIN);
+  const end = current.indexOf(AGENT_CONTEXT_END);
+  if (begin >= 0 && end > begin) {
+    const next = current.slice(0, begin) + block + current.slice(end + AGENT_CONTEXT_END.length);
+    if (next !== current) {
+      Deno.writeTextFileSync(target, next);
+    }
+    return;
+  }
+  const separator = current.endsWith("\n") ? "\n" : "\n\n";
+  Deno.writeTextFileSync(target, `${current}${separator}${block}\n`);
 }
 
 export function readWorkflow(root: string): WorkflowRuntime {
@@ -182,7 +245,12 @@ Every worker handoff should preserve:
 	- Use subagents only for independent investigation, verification, or implementation slices.
 - Do not mutate .goalforge runtime state directly.
 - Do not create commits; GoalForge records commits, reviews, and merges.
-- If blocked, state the blocker and the exact user decision or repo change needed.
+- GoalForge runs pseudo-autonomously: the user may be away for hours. Stopping for input is
+  the last resort, reserved for credentials, third-party access, destructive approval, or a
+  scope-changing product decision. Anything else: decide, note it in the handoff, keep going.
+- Criteria that need the running app or manual QA never block: verify what is checkable in
+  the repository and record "needs manual verification: <what and how>" in the handoff.
+- If truly blocked, state the blocker and the exact user decision or repo change needed.
 
 ## Authority Contract
 - Repo-level operations such as committing the root working tree and pushing to the remote are

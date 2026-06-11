@@ -1785,6 +1785,7 @@ function buildWorkerPrompt(
   strategy = "",
 ): string {
   const instructions = [
+    ["autonomy.md", PROMPTS["autonomy.md"]],
     ["constitution.md", PROMPTS["constitution.md"]],
     ["project.md", PROMPTS["project.md"]],
     ["engineering.md", PROMPTS["engineering.md"]],
@@ -1846,7 +1847,7 @@ Rules:
 - Work as a bounded loop: understand, plan briefly, edit, verify, repair if needed, then hand off exact evidence.
 - Keep scope tight. If you discover unrelated or follow-up work, mention it in your final response instead of doing it silently.
 - Run the exact validation needed for the files you touch.
-- Do not wait for user input. If blocked, explain the blocker clearly in your final response.
+- Do not wait for user input. Only an absolute blocker from autonomy.md may stop this task; for anything else decide, note it, and keep going. If an acceptance criterion needs the running app, manual QA, or visual review, complete the work and record "Needs manual verification: <what and how>" in your handoff.
 - End with a compact GoalForge handoff containing changed files, validation commands/results, decisions, risks, and follow-ups.
 `;
 }

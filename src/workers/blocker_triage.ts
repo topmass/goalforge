@@ -70,6 +70,10 @@ A worker on ${input.task.id} stopped and asked for input. Decide whether GoalFor
 this itself, whether the worker should retry once with corrected instructions, or whether the
 user must be asked.
 
+GoalForge runs pseudo-autonomously: the user may be away for hours and expects to come back to
+finished work, not a stalled queue. Escalation is the last resort, reserved for blockers where
+literally nothing can proceed without the user.
+
 Task:
 - ID: ${input.task.id}
 - Title: ${input.task.title}
@@ -93,6 +97,13 @@ Rules:
 - TRIAGE_RESOLVE <action> when one allowed harness action directly satisfies the blocker.
 - TRIAGE_RETRY followed by corrected instructions when the worker misunderstood the task or
   missed context you can supply. Only choose this when a retry can plausibly succeed.
+- Blockers of the form "this can only be tested in the running app/game", "needs manual QA",
+  or "cannot verify visually" are never escalations. TRIAGE_RETRY with instructions to verify
+  everything checkable inside the repository (builds, tests, greps, inspection) and record the
+  rest in the handoff as "needs manual verification: <what and how>".
+- A worker asking which reasonable option to pick (naming, structure, library already used in
+  the repo, test approach) is not an escalation: TRIAGE_RETRY and tell it to pick the option
+  most consistent with the existing code and note the decision in its handoff.
 - TRIAGE_ESCALATE followed by a single-sentence ask when the blocker needs something only the
   user can provide: credentials, API keys, third-party accounts, money, destructive approval,
   or a product decision. Never retry these.

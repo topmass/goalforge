@@ -1,4 +1,5 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
+import { AUTONOMY_CONTRACT } from "../board/prompts.ts";
 import { extractVerificationVerdictToken } from "../board/validation_evidence.ts";
 import { CodexSession, CodexTurnResult } from "./codex_app_server.ts";
 
@@ -61,6 +62,7 @@ function buildTestPrompt(
 ): string {
   return `You are the GoalForge test engineer for one local coding task.
 
+${AUTONOMY_CONTRACT}
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
 
@@ -96,6 +98,7 @@ Rules:
 	- Do not create commits yourself. The GoalForge daemon commits after this pass.
 	- Keep scope tight. Do not perform unrelated cleanup.
 	- Start your final answer with exactly VERIFICATION_PASSED, VERIFICATION_FAILED, or NEEDS_INPUT.
+	- NEEDS_INPUT is reserved for the absolute blockers in Autonomous Operation (credentials, third-party access, destructive approval, or a scope-changing product decision). "This can only be tested in the running app/game" or "needs manual QA" is never NEEDS_INPUT: verify everything checkable in-repo, and when those checks pass return VERIFICATION_PASSED listing each unverifiable criterion under Remaining risks as "needs manual verification: <what and how>".
 	- End with a concise test handoff listing test files changed, commands run, results, and remaining risks.
 - A bare verdict token is rejected. Your final answer must follow this exact template:
 

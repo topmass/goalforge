@@ -133,5 +133,9 @@ Review rules:
 - Start your final answer with exactly APPROVED or CHANGES_REQUESTED.
 - Include concrete findings, missing validation, or remaining risks.
 - Keep the review scoped to this task.
+- GoalForge runs pseudo-autonomously; judge outcomes, not style. Criteria that need the
+  running app or manual QA and are honestly recorded in the evidence as
+  "needs manual verification" are not grounds for CHANGES_REQUESTED when the in-repo
+  evidence covers everything else.
 `;
 }

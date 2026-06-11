@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
+  ensureAgentContext,
   parseWorkflow,
   readWorkflow,
   setWorkflowMaxConcurrentAgents,
@@ -84,6 +85,50 @@ Deno.test("setWorkflowMaxConcurrentAgents edits only that frontmatter line", () 
     assertStringIncludes(inserted, "# Custom body");
 
     assertThrows(() => setWorkflowMaxConcurrentAgents(root, 0));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("ensureAgentContext creates AGENTS.md but never creates CLAUDE.md", () => {
+  const root = Deno.makeTempDirSync({ prefix: "goalforge-context-" });
+  try {
+    ensureAgentContext(root);
+    const agents = Deno.readTextFileSync(`${root}/AGENTS.md`);
+    assertStringIncludes(agents, "pseudo-autonomous loop");
+    assertStringIncludes(agents, "needs manual verification");
+    assertThrows(() => Deno.statSync(`${root}/CLAUDE.md`));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+  }
+});
+
+Deno.test("ensureAgentContext appends to existing files and refreshes a stale managed block", () => {
+  const root = Deno.makeTempDirSync({ prefix: "goalforge-context-" });
+  try {
+    Deno.writeTextFileSync(`${root}/AGENTS.md`, "# My project rules\n- always test in game\n");
+    Deno.writeTextFileSync(
+      `${root}/CLAUDE.md`,
+      "# Claude rules\n<!-- goalforge:autonomy:begin -->\nstale\n<!-- goalforge:autonomy:end -->\ntail\n",
+    );
+    ensureAgentContext(root);
+
+    const agents = Deno.readTextFileSync(`${root}/AGENTS.md`);
+    assertStringIncludes(agents, "# My project rules");
+    assertStringIncludes(agents, "always test in game");
+    assertStringIncludes(agents, "pseudo-autonomous loop");
+
+    const claude = Deno.readTextFileSync(`${root}/CLAUDE.md`);
+    assertStringIncludes(claude, "# Claude rules");
+    assertStringIncludes(claude, "pseudo-autonomous loop");
+    assertStringIncludes(claude, "tail");
+    assertEquals(claude.includes("stale"), false);
+    assertEquals(claude.split("goalforge:autonomy:begin").length, 2);
+
+    // A second run is a no-op, not another append.
+    ensureAgentContext(root);
+    assertEquals(Deno.readTextFileSync(`${root}/AGENTS.md`), agents);
+    assertEquals(Deno.readTextFileSync(`${root}/CLAUDE.md`), claude);
   } finally {
     Deno.removeSync(root, { recursive: true });
   }
