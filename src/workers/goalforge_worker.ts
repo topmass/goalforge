@@ -1982,10 +1982,28 @@ async function openTaskSession(
 ): Promise<CodexSession> {
   const cwd = task.worktreePath ?? worktreePath;
   if (task.threadId) {
-    return await codex.resumeSession(cwd, task.threadId, options);
+    // Threads are harness-specific: after a backend switch (or a pruned
+    // session file) the stored thread cannot resume. The durable task state
+    // lives on the board (card, workpad, validation), so fall back to a
+    // fresh session instead of wedging the task.
+    try {
+      return await codex.resumeSession(cwd, task.threadId, options);
+    } catch (error) {
+      if (isMissingCodexThreadError(error)) {
+        throw error; // The caller has dedicated recovery for this case.
+      }
+      // Fall through to fork/start below.
+    }
   }
   if (parentThreadId && codex.forkSession) {
-    return await codex.forkSession(cwd, parentThreadId, options);
+    try {
+      return await codex.forkSession(cwd, parentThreadId, options);
+    } catch (error) {
+      if (isMissingCodexThreadError(error)) {
+        throw error; // The caller has dedicated recovery for this case.
+      }
+      return await codex.startSession(cwd, options);
+    }
   }
   return await codex.startSession(cwd, options);
 }
