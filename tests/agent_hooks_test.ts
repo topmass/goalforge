@@ -2,7 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { CLAUDE_HOOK_EVENTS, hookCommand, mergeHookSettings } from "../src/workers/agent_hooks.ts";
 
 Deno.test("mergeHookSettings adds the hook to every event once", () => {
-  const command = hookCommand("/repo/scripts/hooks/goalforge_agent_hook.py", "claude-code");
+  const command = hookCommand("/repo/scripts/hooks/loopforge_agent_hook.py", "claude-code");
   const first = mergeHookSettings({}, CLAUDE_HOOK_EVENTS, command);
   assertEquals(first.added, [...CLAUDE_HOOK_EVENTS]);
   const hooks = first.settings.hooks as Record<

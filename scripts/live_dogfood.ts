@@ -1,13 +1,13 @@
 import { BoardStore } from "../src/board/store.ts";
 import { summarizeGoalProgress } from "../src/board/goal_progress.ts";
-import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../src/workers/loopforge_worker.ts";
 import { parseValidationEvidence } from "../src/board/validation_evidence.ts";
 
 const KEEP = Deno.args.includes("--keep");
 const TIMEOUT_MS = numberArg("--timeout-ms") ?? 10 * 60 * 1000;
-const MARKER = "GOALFORGE_LIVE_DOGFOOD_OK";
+const MARKER = "LOOPFORGE_LIVE_DOGFOOD_OK";
 
-const root = await Deno.makeTempDir({ prefix: "goalforge-live-dogfood-" });
+const root = await Deno.makeTempDir({ prefix: "loopforge-live-dogfood-" });
 let keepRoot = KEEP;
 
 try {
@@ -15,22 +15,22 @@ try {
   const store = new BoardStore(root);
   try {
     store.initProject();
-    const { goal, tasks } = store.createGoalWithTasks("GoalForge live dogfood", [{
+    const { goal, tasks } = store.createGoalWithTasks("LoopForge live dogfood", [{
       title: "Write live dogfood marker",
       description: [
-        "This is a GoalForge live dogfood task running through the production Codex bridge.",
-        `Create a file named goalforge-live-marker.txt containing exactly ${MARKER} and a trailing newline.`,
+        "This is a LoopForge live dogfood task running through the production Codex bridge.",
+        `Create a file named loopforge-live-marker.txt containing exactly ${MARKER} and a trailing newline.`,
         "Do not change unrelated files.",
       ].join("\n"),
       acceptanceCriteria: [
-        `- goalforge-live-marker.txt exists in the project root after merge.`,
-        `- goalforge-live-marker.txt contains exactly ${MARKER}.`,
+        `- loopforge-live-marker.txt exists in the project root after merge.`,
+        `- loopforge-live-marker.txt contains exactly ${MARKER}.`,
         "- Validation records the file inspection and git status.",
       ].join("\n"),
       priority: 100,
       riskLevel: "low",
       verificationPlan: [
-        "- Inspect goalforge-live-marker.txt.",
+        "- Inspect loopforge-live-marker.txt.",
         `- Confirm its exact content is ${MARKER}.`,
         "- Run git diff --check.",
         "- Record the exact observed result.",
@@ -42,7 +42,7 @@ try {
     console.log(`live_goal: ${goal.id}`);
     console.log(`live_task: ${tasks[0].id}`);
 
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       onEvent: (event) => {
         if (["transition", "repair", "close", "error", "contract-gap"].includes(event.kind)) {
           console.log(`live_event: ${event.role}/${event.kind} ${event.message}`);
@@ -61,7 +61,7 @@ try {
     const task = board.tasks[0];
     const progress = summarizeGoalProgress(board, goal.id);
     const evidence = parseValidationEvidence(task.validation);
-    const markerText = await Deno.readTextFile(`${root}/goalforge-live-marker.txt`).catch(() => "");
+    const markerText = await Deno.readTextFile(`${root}/loopforge-live-marker.txt`).catch(() => "");
     const checks = {
       live_task_done: task.status === "done",
       live_goal_closed: store.getGoal(goal.id).status === "closed",
@@ -80,7 +80,7 @@ try {
     if (!Object.values(checks).every(Boolean)) {
       keepRoot = true;
       printFailureDetails(board, progress?.evidenceGaps ?? []);
-      throw new Error("GoalForge live dogfood gate failed.");
+      throw new Error("LoopForge live dogfood gate failed.");
     }
 
     console.log("live_result: passed");
@@ -104,10 +104,10 @@ async function seedFixture(target: string): Promise<void> {
   await Deno.writeTextFile(
     `${target}/AGENTS.md`,
     [
-      "# GoalForge Live Dogfood Fixture",
+      "# LoopForge Live Dogfood Fixture",
       "",
       "- Keep edits scoped to the assigned task.",
-      "- Do not change `.goalforge` runtime state directly.",
+      "- Do not change `.loopforge` runtime state directly.",
       "- Use `git diff --check` as the focused validation command.",
     ].join("\n"),
   );
@@ -117,7 +117,7 @@ async function seedFixture(target: string): Promise<void> {
       "---",
       "version: 1",
       "tracker:",
-      "  kind: goalforge-local",
+      "  kind: loopforge-local",
       "agent:",
       "  max_concurrent_agents: 1",
       "  max_turns: 2",
@@ -128,7 +128,7 @@ async function seedFixture(target: string): Promise<void> {
       "  reasoning_effort: medium",
       "  fast_mode: true",
       "workspace:",
-      "  worktrees_dir: .goalforge/worktrees",
+      "  worktrees_dir: .loopforge/worktrees",
       "  hooks:",
       "    before_run: []",
       "    after_run: []",
@@ -138,7 +138,7 @@ async function seedFixture(target: string): Promise<void> {
       "Run the smallest reliable validation for the marker-file task.",
     ].join("\n"),
   );
-  await Deno.writeTextFile(`${target}/README.md`, "# GoalForge live dogfood fixture\n");
+  await Deno.writeTextFile(`${target}/README.md`, "# LoopForge live dogfood fixture\n");
   await git(target, ["init", "-b", "main"]);
   await git(target, ["add", "."]);
   await git(target, ["commit", "-m", "seed live dogfood fixture"]);
@@ -148,9 +148,9 @@ async function git(cwd: string, args: string[]): Promise<void> {
   const output = await new Deno.Command("git", {
     args: [
       "-c",
-      "user.email=goalforge-live@example.com",
+      "user.email=loopforge-live@example.com",
       "-c",
-      "user.name=GoalForge Live Dogfood",
+      "user.name=LoopForge Live Dogfood",
       ...args,
     ],
     cwd,

@@ -3,7 +3,7 @@ import { BoardStore } from "../src/board/store.ts";
 import { summarizeClosedGoals, summarizeGoalProgress } from "../src/board/goal_progress.ts";
 
 Deno.test("goal progress summarizes the active unfinished goal", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -52,7 +52,7 @@ Deno.test("goal progress summarizes the active unfinished goal", () => {
 });
 
 Deno.test("goal progress reports completion evidence gaps", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -87,7 +87,7 @@ Deno.test("goal progress reports completion evidence gaps", () => {
 });
 
 Deno.test("goal progress marks fully proven completed goals ready to close", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -107,7 +107,7 @@ Deno.test("goal progress marks fully proven completed goals ready to close", () 
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -128,7 +128,7 @@ Deno.test("goal progress marks fully proven completed goals ready to close", () 
 });
 
 Deno.test("goal progress blocks closure when custom contract proof is missing", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -158,7 +158,7 @@ Deno.test("goal progress blocks closure when custom contract proof is missing", 
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -190,7 +190,7 @@ Deno.test("goal progress blocks closure when custom contract proof is missing", 
 });
 
 Deno.test("goal contract proof ignores task-card echoes", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -220,7 +220,7 @@ Deno.test("goal contract proof ignores task-card echoes", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "Nebula checksum replay audit passes.");
@@ -241,7 +241,7 @@ Deno.test("goal contract proof ignores task-card echoes", () => {
 });
 
 Deno.test("closed goal summaries keep recent closure history", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-progress-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-progress-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -261,7 +261,7 @@ Deno.test("closed goal summaries keep recent closure history", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");

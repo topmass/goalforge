@@ -3,7 +3,7 @@ import { BoardStore } from "../src/board/store.ts";
 import { renderCommandCenterFrame, TuiState } from "../src/tui/command_center.ts";
 
 Deno.test("command center snapshot renders task, thread, stream, and controls", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-tui-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-tui-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -25,7 +25,7 @@ Deno.test("command center snapshot renders task, thread, stream, and controls", 
     store.updateTaskTouchedPaths(tasks[0].id, ["src/tui/command_center.ts"]);
     store.updateTaskValidation(
       tasks[0].id,
-      "Codex App Server turn completed.\nTest turn: turn-test\nGoalForge review: APPROVED",
+      "Codex App Server turn completed.\nTest turn: turn-test\nLoopForge review: APPROVED",
     );
     store.recordSupervisorDecision(tasks[0].id, "Supervisor is watching task progress.");
     store.appendEvent(tasks[0].id, null, "worker", "phase", "Rendering command center.");
@@ -45,7 +45,7 @@ Deno.test("command center snapshot renders task, thread, stream, and controls", 
       color: false,
     });
 
-    assertStringIncludes(output, "GoalForge Command Center");
+    assertStringIncludes(output, "LoopForge Command Center");
     assertStringIncludes(output, "Agents / Tasks");
     assertStringIncludes(output, "Build polished TUI");
     assertStringIncludes(output, "Queued");

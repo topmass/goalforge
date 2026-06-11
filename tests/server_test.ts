@@ -19,7 +19,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
   });
   try {
     const html = await fetch(`${server.url}/`).then((response) => response.text());
-    assertStringIncludes(html, "GoalForge");
+    assertStringIncludes(html, "LoopForge");
 
     const configResponse = await fetch(`${server.url}/api/config`, {
       method: "PATCH",
@@ -40,7 +40,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
 
     const runtime = await fetch(`${server.url}/api/runtime`).then((response) => response.json());
     assertEquals(runtime.queueRunning, false);
-    assertEquals(runtime.workflow.trackerKind, "goalforge-local");
+    assertEquals(runtime.workflow.trackerKind, "loopforge-local");
     assertEquals(runtime.runningRuns.length, 0);
 
     await fetch(`${server.url}/api/config`, {
@@ -70,7 +70,7 @@ Deno.test("server exposes board, creates goals, and runs Codex worker", async ()
     assertStringIncludes(board.tasks[0].validation, "Codex App Server turn completed");
     assertStringIncludes(board.tasks[0].validation, "Commit:");
     assertStringIncludes(board.tasks[0].validation, "Test turn:");
-    assertStringIncludes(board.tasks[0].validation, "GoalForge review: APPROVED");
+    assertStringIncludes(board.tasks[0].validation, "LoopForge review: APPROVED");
     assertEquals(await Deno.readTextFile(`${root}/server-test.txt`), "server worker output\n");
     assert(board.agentStatuses.some((status) => status.phase === "done"));
 
@@ -116,7 +116,7 @@ Deno.test("server deletes a started task with a stale running run", async () => 
   try {
     store.initProject();
     const { task } = store.createGoal("Delete stuck started task");
-    store.assignWorktree(task.id, "goalforge/task-1", `${root}/.goalforge/worktrees/TASK-1`);
+    store.assignWorktree(task.id, "loopforge/task-1", `${root}/.loopforge/worktrees/TASK-1`);
     store.requestTransition(task.id, "in_progress", "test", "claim");
     store.createRun(task.id, "worker");
   } finally {
@@ -519,10 +519,10 @@ class TestCodexClient implements CodexClient {
   readThread(session: CodexSession, includeTurns = false): Promise<CodexThreadReadResult> {
     return Promise.resolve({
       threadId: session.threadId,
-      name: "GoalForge test thread",
+      name: "LoopForge test thread",
       status: "idle",
       turnCount: includeTurns ? 1 : 0,
-      raw: { id: session.threadId, name: "GoalForge test thread" },
+      raw: { id: session.threadId, name: "LoopForge test thread" },
     });
   }
 
@@ -531,8 +531,8 @@ class TestCodexClient implements CodexClient {
   }
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
-    if (_input.title === "GoalForge main thread seed") {
-      assertStringIncludes(_input.prompt, "persistent GoalForge main thread");
+    if (_input.title === "LoopForge main thread seed") {
+      assertStringIncludes(_input.prompt, "persistent LoopForge main thread");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -548,8 +548,8 @@ class TestCodexClient implements CodexClient {
       };
     }
 
-    if (_input.title === "GoalForge goal compiler") {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    if (_input.title === "LoopForge goal compiler") {
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -572,7 +572,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": review")) {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -589,7 +589,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": absorb")) {
-      assertStringIncludes(_input.prompt, "Absorb this completed GoalForge task");
+      assertStringIncludes(_input.prompt, "Absorb this completed LoopForge task");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -605,8 +605,8 @@ class TestCodexClient implements CodexClient {
       };
     }
 
-    if (_input.title === "GoalForge scheduler") {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    if (_input.title === "LoopForge scheduler") {
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -626,7 +626,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": test-engineer")) {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -642,7 +642,7 @@ class TestCodexClient implements CodexClient {
       };
     }
 
-    assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    assertStringIncludes(_input.prompt, "Current LoopForge board memory");
     await Deno.writeTextFile(`${session.cwd}/server-test.txt`, "server worker output\n");
     this.onEvent({
       taskId: null,

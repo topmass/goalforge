@@ -7,11 +7,11 @@ Deno.test("init creates local runtime files and prompt templates", () => {
   const store = new BoardStore(root);
   try {
     store.initProject();
-    assertEquals(Deno.statSync(`${root}/.goalforge/board.sqlite`).isFile, true);
-    assertEquals(Deno.statSync(`${root}/.goalforge/config.json`).isFile, true);
-    assertEquals(Deno.statSync(`${root}/.goalforge/prompts/constitution.md`).isFile, true);
+    assertEquals(Deno.statSync(`${root}/.loopforge/board.sqlite`).isFile, true);
+    assertEquals(Deno.statSync(`${root}/.loopforge/config.json`).isFile, true);
+    assertEquals(Deno.statSync(`${root}/.loopforge/prompts/constitution.md`).isFile, true);
     assertEquals(Deno.statSync(`${root}/WORKFLOW.md`).isFile, true);
-    assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.goalforge/");
+    assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.loopforge/");
     assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.omx/");
   } finally {
     store.close();
@@ -163,7 +163,7 @@ Deno.test("goals close only after completion evidence is ready", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -472,7 +472,7 @@ Deno.test("started stuck tasks can be deleted from the board", () => {
   try {
     store.initProject();
     const { task } = store.createGoal("Remove this stuck goal");
-    store.assignWorktree(task.id, "goalforge/task-1", `${root}/.goalforge/worktrees/TASK-1`);
+    store.assignWorktree(task.id, "loopforge/task-1", `${root}/.loopforge/worktrees/TASK-1`);
     store.requestTransition(task.id, "in_progress", "test", "claim");
     store.createRun(task.id, "worker");
     store.deleteTask(task.id);
@@ -613,7 +613,7 @@ Deno.test("tasks store thread lineage, compact cards, handoffs, and conflict sig
     store.updateTaskActiveTurn(task.id, "implementation");
     store.updateTaskContextManifest(
       task.id,
-      `${root}/.goalforge/tasks/TASK-1/context-manifest.json`,
+      `${root}/.loopforge/tasks/TASK-1/context-manifest.json`,
     );
     store.updateTaskTouchedPaths(task.id, ["src/a.ts", "src/a.ts", "src/b.ts"]);
     store.updateTaskCard(task.id, "TASK-1 status: in_progress");

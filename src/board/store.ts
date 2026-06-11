@@ -7,6 +7,7 @@ import {
   normalizeRoot,
   promptsPath,
   runsPath,
+  runtimeDirName,
   runtimePath,
   taskArtifactsPath,
   worktreesPath,
@@ -48,7 +49,7 @@ import {
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
-export interface GoalForgeConfig {
+export interface LoopForgeConfig {
   name: string;
   port: number;
   workerMode: "codex";
@@ -164,7 +165,7 @@ export class BoardStore {
         "Start this task when its dependencies are done.",
         null,
         "",
-        draft.workpad?.trim() || "Created from GoalForge intake. Awaiting worker handoff.",
+        draft.workpad?.trim() || "Created from LoopForge intake. Awaiting worker handoff.",
         draft.acceptanceCriteria.trim() || defaultAcceptance(trimmed),
         "",
         null,
@@ -236,7 +237,7 @@ export class BoardStore {
         "Start this task when its dependencies are done.",
         null,
         "",
-        draft.workpad?.trim() || "Created as GoalForge follow-up work.",
+        draft.workpad?.trim() || "Created as LoopForge follow-up work.",
         draft.acceptanceCriteria.trim() || defaultAcceptance(goal.text),
         "",
         null,
@@ -462,7 +463,7 @@ export class BoardStore {
       phase: "planning",
       attempt: task.loopAttempt + 1,
       currentGate: "worktree",
-      nextAction: "GoalForge is preparing project context and an isolated worktree.",
+      nextAction: "LoopForge is preparing project context and an isolated worktree.",
       needsInputPrompt: null,
     });
     this.upsertAgentStatus({
@@ -472,7 +473,7 @@ export class BoardStore {
       turnId: null,
       phase: "starting",
       headline: "Preparing worker run.",
-      detail: "GoalForge is setting up this task.",
+      detail: "LoopForge is setting up this task.",
       risk: "none",
       lastSupervisorAction: null,
       needsInputPrompt: null,
@@ -491,7 +492,7 @@ export class BoardStore {
     this.db.prepare("UPDATE runs SET stop_requested_at = ? WHERE id = ?").run(now, run.id);
     this.updateTaskLoop(task.id, {
       currentGate: "stopping",
-      nextAction: "GoalForge is stopping the active Codex turn for this task.",
+      nextAction: "LoopForge is stopping the active Codex turn for this task.",
       needsInputPrompt: "Stop requested. Wait for the active turn to halt before restarting.",
     });
     this.upsertAgentStatus({
@@ -539,7 +540,7 @@ export class BoardStore {
         nextAction: status === "completed"
           ? "Task run is complete."
           : "Read the blocker, add input if needed, then restart the task.",
-        needsInputPrompt: status === "completed" ? null : "GoalForge stopped before completion.",
+        needsInputPrompt: status === "completed" ? null : "LoopForge stopped before completion.",
       });
     }
     this.upsertAgentStatus({
@@ -548,8 +549,8 @@ export class BoardStore {
       phase: status === "completed" ? "done" : "blocked",
       headline: status === "completed" ? "Run complete." : "Run stopped.",
       detail: status === "completed"
-        ? "GoalForge finished this worker run."
-        : "GoalForge stopped this worker run before completion.",
+        ? "LoopForge finished this worker run."
+        : "LoopForge stopped this worker run before completion.",
       risk: status === "completed" ? "none" : "needs_user",
       interruptible: false,
     });
@@ -901,7 +902,7 @@ export class BoardStore {
         runId: status.runId,
         phase: status.phase,
         headline: "No recent agent activity.",
-        detail: "GoalForge has not seen new Codex events for this active run.",
+        detail: "LoopForge has not seen new Codex events for this active run.",
         risk: "stale",
         interruptible: status.interruptible,
       });
@@ -954,7 +955,7 @@ export class BoardStore {
           task.id,
           "blocked",
           "orchestrator",
-          "GoalForge restarted while this task was active. Add a message or restart it.",
+          "LoopForge restarted while this task was active. Add a message or restart it.",
         ).event,
       );
     }
@@ -1572,7 +1573,7 @@ function ensureConfig(root: string): void {
   }
 }
 
-export function readConfig(root: string): GoalForgeConfig {
+export function readConfig(root: string): LoopForgeConfig {
   try {
     const parsed = JSON.parse(Deno.readTextFileSync(configPath(root))) as Record<string, unknown>;
     return normalizeConfig(parsed);
@@ -1581,16 +1582,16 @@ export function readConfig(root: string): GoalForgeConfig {
   }
 }
 
-export function updateConfig(root: string, patch: Partial<GoalForgeConfig>): GoalForgeConfig {
+export function updateConfig(root: string, patch: Partial<LoopForgeConfig>): LoopForgeConfig {
   ensureRuntimeDirectories(root);
   const config = normalizeConfig({ ...readConfig(root), ...patch });
   Deno.writeTextFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
   return config;
 }
 
-function defaultConfig(): GoalForgeConfig {
+function defaultConfig(): LoopForgeConfig {
   return {
-    name: "GoalForge",
+    name: "LoopForge",
     port: 4733,
     workerMode: "codex",
     maxConcurrentAgents: 2,
@@ -1603,7 +1604,7 @@ function defaultConfig(): GoalForgeConfig {
   };
 }
 
-function normalizeConfig(value: Record<string, unknown>): GoalForgeConfig {
+function normalizeConfig(value: Record<string, unknown>): LoopForgeConfig {
   const defaults = defaultConfig();
   const reasoning = typeof value.reasoningEffort === "string" &&
       ["low", "medium", "high", "xhigh"].includes(value.reasoningEffort)
@@ -1649,7 +1650,7 @@ function ensureGitignore(root: string): void {
     current = "";
   }
 
-  const required = ["/.goalforge/", "/.omx/"];
+  const required = [`/${runtimeDirName(root)}/`, "/.omx/"];
   const additions = required.filter((entry) => !current.split(/\r?\n/).includes(entry));
   if (additions.length) {
     const prefix = current && !current.endsWith("\n") ? "\n" : "";
@@ -1699,7 +1700,7 @@ function normalizeCompletionContract(
     `- ${taskCount} planned task${taskCount === 1 ? "" : "s"} must reach Done.`,
     "- Every Done task must include implementation evidence, validation evidence, approved review, commit evidence, clean git status, and a compact handoff or task card.",
     "- Project memory must preserve the final behavior, changed surfaces, validation results, and remaining risks.",
-    "- GoalForge may close this goal only when the active goal verdict is Ready To Close.",
+    "- LoopForge may close this goal only when the active goal verdict is Ready To Close.",
   ].join("\n");
 }
 
@@ -1736,7 +1737,7 @@ function loopPatchForTransition(
     return {
       phase: "working",
       currentGate: "implementation",
-      nextAction: "GoalForge is letting the Codex worker implement the task.",
+      nextAction: "LoopForge is letting the Codex worker implement the task.",
       needsInputPrompt: null,
     };
   }
@@ -1744,7 +1745,7 @@ function loopPatchForTransition(
     return {
       phase: "reviewing",
       currentGate: "review",
-      nextAction: "GoalForge is reviewing validation evidence and the diff.",
+      nextAction: "LoopForge is reviewing validation evidence and the diff.",
       needsInputPrompt: null,
     };
   }
@@ -1761,7 +1762,7 @@ function loopPatchForTransition(
       phase: "blocked",
       currentGate: "needs-input",
       nextAction: "Read the blocker, add input if needed, then restart the task.",
-      needsInputPrompt: reason || "GoalForge needs direction before this task can continue.",
+      needsInputPrompt: reason || "LoopForge needs direction before this task can continue.",
     };
   }
   return {

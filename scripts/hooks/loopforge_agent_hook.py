@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""GoalForge agent status hook.
+"""LoopForge agent status hook.
 
 Reads a coding-agent lifecycle hook payload (Claude Code or Codex CLI style)
-from stdin and reports the agent's state to the local GoalForge server so the
+from stdin and reports the agent's state to the local LoopForge server so the
 agent shows up in the Active Agents panel and the Agent Flow visualizer.
 
 Registered per agent, for example:
-    python3 goalforge_agent_hook.py --agent claude-code
+    python3 loopforge_agent_hook.py --agent claude-code
 
 Never blocks or fails the host agent: short timeout, always exits 0.
 """
@@ -65,9 +65,9 @@ def main() -> int:
         "cwd": str(payload.get("cwd") or os.getcwd()),
         "sessionId": str(payload.get("session_id") or payload.get("sessionId") or ""),
     }
-    base = os.environ.get("GOALFORGE_URL")
+    base = os.environ.get("LOOPFORGE_URL")
     if not base:
-        port = os.environ.get("GOALFORGE_PORT", "4733")
+        port = os.environ.get("LOOPFORGE_PORT", "4733")
         base = f"http://127.0.0.1:{port}"
     request = urllib.request.Request(
         f"{base}/api/agents/report",

@@ -50,8 +50,8 @@ export function writeTaskContextArtifacts(input: TaskMemoryInput): TaskContextAr
           "Read the task packet before editing.",
           "Read AGENTS.md, project-specsheet.md, and WORKFLOW.md when present.",
           "Work only in the assigned worktree for code edits.",
-          "Do not mutate .goalforge runtime state directly.",
-          "End with a GoalForge compact handoff.",
+          "Do not mutate .loopforge runtime state directly.",
+          "End with a LoopForge compact handoff.",
         ],
       },
       null,
@@ -93,7 +93,7 @@ export function buildTaskCard(task: Task, touchedPaths: string[] = task.touchedP
 
 export function buildFinalHandoff(task: Task, touchedPaths: string[]): string {
   return [
-    "# GoalForge Task Handoff",
+    "# LoopForge Task Handoff",
     "",
     `Task: ${task.id}`,
     `Branch: ${task.branchName ?? "none"}`,
@@ -127,7 +127,7 @@ export function buildFinalHandoff(task: Task, touchedPaths: string[]): string {
 }
 
 export function buildMainThreadAbsorptionPrompt(task: Task): string {
-  return `Absorb this completed GoalForge task into the project main thread.
+  return `Absorb this completed LoopForge task into the project main thread.
 
 Compact style:
 - Small words. Exact facts.
@@ -164,11 +164,11 @@ export function appendSpecsheetHandoff(root: string, task: Task): void {
 
 export function defaultAgentsInstructions(): string {
   return [
-    "# GoalForge Project Instructions",
+    "# LoopForge Project Instructions",
     "",
     "- Read `project-specsheet.md` for durable project behavior and feature notes.",
-    "- Read `WORKFLOW.md` for GoalForge task, review, and merge rules.",
-    "- For GoalForge-assigned tasks, read the generated context manifest named in the prompt.",
+    "- Read `WORKFLOW.md` for LoopForge task, review, and merge rules.",
+    "- For LoopForge-assigned tasks, read the generated context manifest named in the prompt.",
     "- Keep implementation scope tied to the assigned task.",
     "- End task work with a compact handoff: changed files, validation, risks, follow-ups.",
     "",
@@ -196,9 +196,9 @@ function ensureCurrentState(root: string): void {
     Deno.writeTextFileSync(
       target,
       [
-        "# GoalForge Current State",
+        "# LoopForge Current State",
         "",
-        "- GoalForge uses one project main thread for planning and memory.",
+        "- LoopForge uses one project main thread for planning and memory.",
         "- Each task runs in an isolated worktree with its own child Codex thread.",
         "- Completed task handoffs are compacted before main-thread absorption.",
         "",
@@ -260,7 +260,7 @@ function defaultSpecsheet(): string {
   return [
     "# Project Specsheet",
     "",
-    "GoalForge durable project memory.",
+    "LoopForge durable project memory.",
     "",
     "## Rules",
     "",
@@ -280,7 +280,7 @@ function formatValidation(validation: string): string[] {
     return ["- none yet"];
   }
   return validation.split(/\r?\n/).filter((line) =>
-    /^(Turn status:|Test turn status:|Verification verdict:|Commit:|Git status:|Diff stat:|GoalForge review:)/
+    /^(Turn status:|Test turn status:|Verification verdict:|Commit:|Git status:|Diff stat:|LoopForge review:)/
       .test(line)
   ).slice(0, 8).map((line) => `- ${line}`);
 }

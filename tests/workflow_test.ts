@@ -10,7 +10,7 @@ Deno.test("workflow parser normalizes Symphony-style local kanban config", () =>
   const workflow = parseWorkflow(`---
 version: 1
 tracker:
-  kind: goalforge-local
+  kind: loopforge-local
 agent:
   max_concurrent_agents: 3
   max_turns: 2
@@ -23,7 +23,7 @@ codex:
 github:
   pr_review: true
 workspace:
-  worktrees_dir: .goalforge/worktrees
+  worktrees_dir: .loopforge/worktrees
   hooks:
     before_run:
       - printf ready
@@ -34,7 +34,7 @@ workspace:
 Keep the local Kanban as the tracker.
 `);
 
-  assertEquals(workflow.trackerKind, "goalforge-local");
+  assertEquals(workflow.trackerKind, "loopforge-local");
   assertEquals(workflow.maxConcurrentAgents, 3);
   assertEquals(workflow.maxTurns, 2);
   assertEquals(workflow.maxRetries, 4);
@@ -65,14 +65,14 @@ authority:
 });
 
 Deno.test("setWorkflowMaxConcurrentAgents edits only that frontmatter line", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-workflow-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-workflow-" });
   try {
     const updated = setWorkflowMaxConcurrentAgents(root, 4);
     assertEquals(updated.maxConcurrentAgents, 4);
     const source = Deno.readTextFileSync(`${root}/WORKFLOW.md`);
     assertStringIncludes(source, "max_concurrent_agents: 4");
     assertStringIncludes(source, "max_retries: 1");
-    assertStringIncludes(source, "# GoalForge Workflow");
+    assertStringIncludes(source, "# LoopForge Workflow");
     assertEquals(readWorkflow(root).maxConcurrentAgents, 4);
 
     Deno.writeTextFileSync(
@@ -91,7 +91,7 @@ Deno.test("setWorkflowMaxConcurrentAgents edits only that frontmatter line", () 
 });
 
 Deno.test("ensureAgentContext creates AGENTS.md but never creates CLAUDE.md", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-context-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-context-" });
   try {
     ensureAgentContext(root);
     const agents = Deno.readTextFileSync(`${root}/AGENTS.md`);
@@ -104,12 +104,12 @@ Deno.test("ensureAgentContext creates AGENTS.md but never creates CLAUDE.md", ()
 });
 
 Deno.test("ensureAgentContext appends to existing files and refreshes a stale managed block", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-context-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-context-" });
   try {
     Deno.writeTextFileSync(`${root}/AGENTS.md`, "# My project rules\n- always test in game\n");
     Deno.writeTextFileSync(
       `${root}/CLAUDE.md`,
-      "# Claude rules\n<!-- goalforge:autonomy:begin -->\nstale\n<!-- goalforge:autonomy:end -->\ntail\n",
+      "# Claude rules\n<!-- loopforge:autonomy:begin -->\nstale\n<!-- loopforge:autonomy:end -->\ntail\n",
     );
     ensureAgentContext(root);
 
@@ -123,7 +123,7 @@ Deno.test("ensureAgentContext appends to existing files and refreshes a stale ma
     assertStringIncludes(claude, "pseudo-autonomous loop");
     assertStringIncludes(claude, "tail");
     assertEquals(claude.includes("stale"), false);
-    assertEquals(claude.split("goalforge:autonomy:begin").length, 2);
+    assertEquals(claude.split("loopforge:autonomy:begin").length, 2);
 
     // A second run is a no-op, not another append.
     ensureAgentContext(root);

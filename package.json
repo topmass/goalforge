@@ -3,7 +3,7 @@
     "opentui": "bun src/tui/opentui_client.ts",
     "smoke:opentui": "python3 scripts/smoke_opentui_tui.py",
     "dogfood:opentui": "python3 scripts/smoke_opentui_tui.py --dogfood-only",
-    "dogfood:live": "./goalforge dogfood --live"
+    "dogfood:live": "./loopforge dogfood --live"
   },
   "dependencies": {
     "@opentui/core": "0.3.0"

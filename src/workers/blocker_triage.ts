@@ -64,13 +64,13 @@ export function buildTriagePrompt(input: {
       `- ${action}: ${ACTION_DESCRIPTIONS[action] ?? "harness action"}`
     ).join("\n")
     : "- none available";
-  return `You are the GoalForge main agent triaging a blocked sub-agent task.
+  return `You are the LoopForge main agent triaging a blocked sub-agent task.
 
-A worker on ${input.task.id} stopped and asked for input. Decide whether GoalForge can resolve
+A worker on ${input.task.id} stopped and asked for input. Decide whether LoopForge can resolve
 this itself, whether the worker should retry once with corrected instructions, or whether the
 user must be asked.
 
-GoalForge runs pseudo-autonomously: the user may be away for hours and expects to come back to
+LoopForge runs pseudo-autonomously: the user may be away for hours and expects to come back to
 finished work, not a stalled queue. Escalation is the last resort, reserved for blockers where
 literally nothing can proceed without the user.
 
@@ -83,13 +83,13 @@ Task:
 Blocker reported by the worker:
 ${input.blocker}
 
-Harness actions you may invoke (run deterministically by GoalForge, not by an agent):
+Harness actions you may invoke (run deterministically by LoopForge, not by an agent):
 ${actions}
 
 Repo WORKFLOW.md instructions:
 ${input.workflowInstructions}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${input.projectMemory}
 
 Rules:

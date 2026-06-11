@@ -8,9 +8,9 @@ Deno.test("reset memory confirmation requires uppercase RESET", () => {
 });
 
 Deno.test("reset memory confirmation accepts an explicit replacement id", () => {
-  assertEquals(parseResetMemoryConfirmation("RESET goalforge-main"), {
+  assertEquals(parseResetMemoryConfirmation("RESET loopforge-main"), {
     confirmed: true,
-    threadId: "goalforge-main",
+    threadId: "loopforge-main",
   });
   assertEquals(parseResetMemoryConfirmation("RESET   custom-main"), {
     confirmed: true,

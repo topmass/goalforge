@@ -50,10 +50,10 @@ Deno.test("triage parser escalates with the compressed ask and fails closed on g
 
 Deno.test("blocker fingerprints ignore volatile details but track real differences", () => {
   const first = fingerprintBlocker(
-    "NEEDS_INPUT branch goalforge/task-1 is 6 commits behind origin/main at abc1234.\nPath /tmp/x1/repo has no changes.",
+    "NEEDS_INPUT branch loopforge/task-1 is 6 commits behind origin/main at abc1234.\nPath /tmp/x1/repo has no changes.",
   );
   const second = fingerprintBlocker(
-    "NEEDS_INPUT branch goalforge/task-1 is 9 commits behind origin/main at ffe9921.\nPath /tmp/zz9/repo has no changes.",
+    "NEEDS_INPUT branch loopforge/task-1 is 9 commits behind origin/main at ffe9921.\nPath /tmp/zz9/repo has no changes.",
   );
   assertEquals(first, second);
 

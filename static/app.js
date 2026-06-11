@@ -22,7 +22,7 @@ const settingsStatusEl = document.querySelector("#settingsStatus");
 const runtimeStatusEl = document.querySelector("#runtimeStatus");
 
 document.querySelector("#addGoal").addEventListener("click", addGoal);
-document.querySelector("#startGoalforge").addEventListener(
+document.querySelector("#startLoopforge").addEventListener(
   "click",
   () => postJson("/api/run-queue", {}),
 );
@@ -42,7 +42,7 @@ themeModeEl.addEventListener("change", () => {
   applyTheme(themeModeEl.checked ? "dark" : "light");
 });
 
-applyTheme(localStorage.getItem("goalforge-theme") || "light");
+applyTheme(localStorage.getItem("loopforge-theme") || "light");
 connectEvents();
 loadConfig();
 loadRuntime();
@@ -96,7 +96,7 @@ function renderConfig() {
 function applyTheme(theme) {
   const selected = theme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = selected;
-  localStorage.setItem("goalforge-theme", selected);
+  localStorage.setItem("loopforge-theme", selected);
   themeModeEl.checked = selected === "dark";
 }
 
@@ -182,7 +182,7 @@ function renderBoard() {
         await postJson(`/api/tasks/${encodeURIComponent(taskId)}/transition`, {
           status: status.targetStatus,
           actor: "user",
-          reason: "Dragged in GoalForge board.",
+          reason: "Dragged in LoopForge board.",
         }).catch((error) => alert(error.message));
         await loadBoard();
       }

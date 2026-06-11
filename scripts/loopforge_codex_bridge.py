@@ -15,7 +15,7 @@ except Exception as exc:  # pragma: no cover - exercised only without dependency
         json.dumps(
             {
                 "fatal": (
-                    "Unable to import openai_codex. GoalForge runs this bridge with "
+                    "Unable to import openai_codex. LoopForge runs this bridge with "
                     "`uv run --with openai-codex`; install uv or run `codex login` "
                     f"after fixing the Python environment. Import error: {exc}"
                 )
@@ -48,7 +48,7 @@ class Bridge:
                 cwd=params.get("cwd"),
                 model=params.get("model"),
                 sandbox=sandbox_value(params.get("sandbox")),
-                service_name=goalforge_service_name(params.get("cwd")),
+                service_name=loopforge_service_name(params.get("cwd")),
                 base_instructions=optional_string(params.get("baseInstructions")),
                 developer_instructions=optional_string(params.get("developerInstructions")),
             )
@@ -87,7 +87,7 @@ class Bridge:
             thread_id = str(params["threadId"])
             thread = self.threads.get(thread_id) or self.codex.thread_resume(thread_id)
             self.threads[thread_id] = thread
-            thread.set_name(str(params.get("name") or "GoalForge"))
+            thread.set_name(str(params.get("name") or "LoopForge"))
             return True, {"ok": True}
         if op == "thread_read":
             thread_id = str(params["threadId"])
@@ -216,11 +216,11 @@ def sandbox_value(value: Any) -> Any:
     return None
 
 
-def goalforge_service_name(cwd: Any) -> str:
+def loopforge_service_name(cwd: Any) -> str:
     if not cwd:
-        return "GoalForge"
+        return "LoopForge"
     project_name = Path(str(cwd)).resolve().name
-    return f"GoalForge - {project_name}" if project_name else "GoalForge"
+    return f"LoopForge - {project_name}" if project_name else "LoopForge"
 
 
 def optional_string(value: Any) -> str | None:

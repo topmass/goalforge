@@ -13,14 +13,14 @@ export async function prepareTaskWorktree(
   task: Task,
   configuredWorktreesDir = worktreesPath(root),
 ): Promise<WorktreeAssignment> {
-  const branchName = `goalforge/${task.id.toLowerCase()}`;
+  const branchName = `loopforge/${task.id.toLowerCase()}`;
   const worktreeRoot = path.isAbsolute(configuredWorktreesDir)
     ? configuredWorktreesDir
     : path.join(root, configuredWorktreesDir);
   const worktreePath = path.join(worktreeRoot, task.id);
 
   if (!await isGitRepo(root)) {
-    throw new Error("GoalForge workers require a git repository. Run goalforge init first.");
+    throw new Error("LoopForge workers require a git repository. Run loopforge init first.");
   }
 
   try {
@@ -77,9 +77,9 @@ export async function gitCommitAll(cwd: string, message: string): Promise<string
   await runCommand(cwd, [
     "git",
     "-c",
-    "user.email=goalforge@local",
+    "user.email=loopforge@local",
     "-c",
-    "user.name=GoalForge",
+    "user.name=LoopForge",
     "commit",
     "-m",
     message,
@@ -97,9 +97,9 @@ async function gitCommitNestedRepos(cwd: string, message: string): Promise<strin
     await runCommand(repo, [
       "git",
       "-c",
-      "user.email=goalforge@local",
+      "user.email=loopforge@local",
       "-c",
-      "user.name=GoalForge",
+      "user.name=LoopForge",
       "commit",
       "-m",
       message,
@@ -175,7 +175,7 @@ export async function ensureWorktreeExcludes(cwd: string): Promise<void> {
   const excludePath = (await runCommand(cwd, ["git", "rev-parse", "--git-path", "info/exclude"]))
     .trim();
   const current = await Deno.readTextFile(excludePath).catch(() => "");
-  const additions = [".omx/", ".goalforge/"].filter((entry) =>
+  const additions = [".omx/", ".loopforge/"].filter((entry) =>
     !current.split(/\r?\n/).includes(entry)
   );
   if (!additions.length) {
@@ -202,7 +202,7 @@ export async function gitPublishRoot(
   remote = "origin",
 ): Promise<PublishResult> {
   if (!await isGitRepo(root)) {
-    throw new Error("GoalForge publish requires a git repository. Run goalforge init first.");
+    throw new Error("LoopForge publish requires a git repository. Run loopforge init first.");
   }
   const remotes = (await runCommand(root, ["git", "remote"])).split(/\r?\n/).map((line) =>
     line.trim()
@@ -214,12 +214,12 @@ export async function gitPublishRoot(
   }
   const branch = (await runCommand(root, ["git", "rev-parse", "--abbrev-ref", "HEAD"])).trim();
   if (!branch || branch === "HEAD") {
-    throw new Error("GoalForge publish requires a checked-out branch, not a detached HEAD.");
+    throw new Error("LoopForge publish requires a checked-out branch, not a detached HEAD.");
   }
   const dirtyBefore = Boolean((await gitStatus(root)).trim());
   const commitResult = await gitCommitAll(root, message);
   if (dirtyBefore && commitResult === null) {
-    throw new Error("GoalForge publish could not commit the dirty working tree.");
+    throw new Error("LoopForge publish could not commit the dirty working tree.");
   }
   try {
     await runCommand(root, ["git", "fetch", remote, branch]);
@@ -293,9 +293,9 @@ export async function gitMergeBranch(root: string, branchName: string): Promise<
   return await runCommand(root, [
     "git",
     "-c",
-    "user.email=goalforge@local",
+    "user.email=loopforge@local",
     "-c",
-    "user.name=GoalForge",
+    "user.name=LoopForge",
     "merge",
     "--no-ff",
     branchName,
@@ -316,13 +316,13 @@ export async function ensureGitRepository(root: string): Promise<string[]> {
     await runCommand(root, [
       "git",
       "-c",
-      "user.email=goalforge@local",
+      "user.email=loopforge@local",
       "-c",
-      "user.name=GoalForge",
+      "user.name=LoopForge",
       "commit",
       "--allow-empty",
       "-m",
-      "GoalForge baseline",
+      "LoopForge baseline",
     ]);
     actions.push("Created baseline commit.");
   }

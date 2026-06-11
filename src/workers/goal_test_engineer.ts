@@ -60,7 +60,7 @@ function buildTestPrompt(
   workflowInstructions: string,
   verificationGates: string,
 ): string {
-  return `You are the GoalForge test engineer for one local coding task.
+  return `You are the LoopForge test engineer for one local coding task.
 
 ${AUTONOMY_CONTRACT}
 Project AGENTS.md context from the original folder:
@@ -69,7 +69,7 @@ ${projectInstructions}
 Repo WORKFLOW.md instructions:
 ${workflowInstructions}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${projectMemory}
 
 Task:
@@ -94,8 +94,8 @@ Rules:
 - Inspect the changed surface and existing project test conventions.
 - Add or update focused tests only when that is the right way to prove this task.
 - Run the exact relevant tests, build, typecheck, lint, or smoke checks for the changed surface.
-- If this is a GoalForge contract-evidence or completion-evidence repair task, quote each listed missing contract clause or evidence gap you proved and the exact command/result or inspection that proves it.
-	- Do not create commits yourself. The GoalForge daemon commits after this pass.
+- If this is a LoopForge contract-evidence or completion-evidence repair task, quote each listed missing contract clause or evidence gap you proved and the exact command/result or inspection that proves it.
+	- Do not create commits yourself. The LoopForge daemon commits after this pass.
 	- Keep scope tight. Do not perform unrelated cleanup.
 	- Start your final answer with exactly VERIFICATION_PASSED, VERIFICATION_FAILED, or NEEDS_INPUT.
 	- NEEDS_INPUT is reserved for the absolute blockers in Autonomous Operation (credentials, third-party access, destructive approval, or a scope-changing product decision). "This can only be tested in the running app/game" or "needs manual QA" is never NEEDS_INPUT: verify everything checkable in-repo, and when those checks pass return VERIFICATION_PASSED listing each unverifiable criterion under Remaining risks as "needs manual verification: <what and how>".

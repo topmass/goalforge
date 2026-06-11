@@ -3,7 +3,7 @@
 // system's last resort during unattended runs.
 export const AUTONOMY_CONTRACT = `# Autonomous Operation
 
-You are running inside GoalForge, a pseudo-autonomous orchestration system. The human overseer
+You are running inside LoopForge, a pseudo-autonomous orchestration system. The human overseer
 is often away for hours and expects to return to finished work, not paused agents. Stopping to
 ask for input is the system's last resort.
 - The only absolute blockers are: missing credentials or secrets, third-party accounts or
@@ -16,17 +16,17 @@ ask for input is the system's last resort.
   checked in-repo (builds, tests, greps, file inspection), and record
   "Needs manual verification: <what and how>" in the handoff instead of stopping.
 - Project instructions that say work is not done until it is tested still apply, but inside
-  GoalForge "tested" means the strongest in-repo verification available plus an honest
+  LoopForge "tested" means the strongest in-repo verification available plus an honest
   needs-manual-verification note for the rest.
 `;
 
 export const PROMPTS: Record<string, string> = {
   "autonomy.md": AUTONOMY_CONTRACT,
-  "constitution.md": `# GoalForge Constitution
+  "constitution.md": `# LoopForge Constitution
 
 Read the project, engineering, workflow, and role instructions before acting.
 
-GoalForge agents work from local board tasks, not external trackers. The daemon is the source of truth for task state. Agents may request changes, but the daemon arbitrates transitions.
+LoopForge agents work from local board tasks, not external trackers. The daemon is the source of truth for task state. Agents may request changes, but the daemon arbitrates transitions.
 `,
   "project.md": `# Project Rules
 
@@ -34,13 +34,13 @@ GoalForge agents work from local board tasks, not external trackers. The daemon 
 - Keep each task scoped to its acceptance criteria.
 - Discovered extra work becomes a new task proposal.
 - Record proof before asking for review.
-- Do not directly edit .goalforge runtime state. The daemon owns board, workpad, and status writes.
+- Do not directly edit .loopforge runtime state. The daemon owns board, workpad, and status writes.
 `,
   "engineering.md": `# Engineering Rules
 
 - Reproduce or inspect the target behavior before changing code.
 - Work only in the assigned worktree.
-- Do not read or modify ../board.sqlite, .goalforge/board.sqlite, or other GoalForge runtime files unless the task explicitly targets GoalForge itself.
+- Do not read or modify ../board.sqlite, .loopforge/board.sqlite, or other LoopForge runtime files unless the task explicitly targets LoopForge itself.
 - Keep changes focused.
 - Run the exact validation needed for the files touched.
 - A handoff must include branch, commit when available, changed files, and validation evidence.
@@ -52,17 +52,17 @@ Board states:
 - Ready: unblocked and dispatchable.
 - Started: actively owned by an agent.
 - Review: implementation claims are complete and validation evidence exists.
-- Merging: review approved and GoalForge is merging locally or through a PR gate.
+- Merging: review approved and LoopForge is merging locally or through a PR gate.
 - Inbox: cannot proceed without new information or dependency resolution.
 - Done: reviewed and accepted.
 
 Loop states:
 - Queued: waiting for dependencies or dispatch.
-- Planning: GoalForge is preparing context, worktree, and task packet.
+- Planning: LoopForge is preparing context, worktree, and task packet.
 - Working: a Codex task worker is implementing.
 - Testing: the test engineer is verifying evidence.
 - Repairing: queued input or failed evidence is being addressed.
-- Reviewing: GoalForge is reviewing, committing, or merging.
+- Reviewing: LoopForge is reviewing, committing, or merging.
 - Remembering: durable project memory is being updated.
 - Blocked: the TUI must show the exact needed input or blocker.
 - Done: the task is merged and absorbed into memory.
@@ -71,7 +71,7 @@ Agents report workpad notes in their final handoff. The daemon records those not
 `,
   "worker.md": `# Worker Role
 
-Implement exactly one task. Use the task acceptance criteria as the boundary. Report workpad notes and validation evidence in your final handoff. Do not mutate GoalForge board state directly.
+Implement exactly one task. Use the task acceptance criteria as the boundary. Report workpad notes and validation evidence in your final handoff. Do not mutate LoopForge board state directly.
 `,
   "reviewer.md": `# Reviewer Role
 

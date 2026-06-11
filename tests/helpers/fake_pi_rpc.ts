@@ -60,15 +60,15 @@ function runPrompt(message: string): void {
   write({ type: "agent_start" });
   write({ type: "turn_start" });
   let reply = "Fake pi acknowledged the prompt.";
-  if (message.includes("persistent GoalForge main thread")) {
+  if (message.includes("persistent LoopForge main thread")) {
     reply = "Project memory thread is ready.";
-  } else if (message.includes("GoalForge test engineer")) {
+  } else if (message.includes("LoopForge test engineer")) {
     reply = "VERIFICATION_PASSED\n- Fake pi verified the change.";
   } else if (message.includes("APPROVED or CHANGES_REQUESTED")) {
     reply = "APPROVED\n- Fake pi review passed.";
-  } else if (message.includes("Absorb this completed GoalForge task")) {
+  } else if (message.includes("Absorb this completed LoopForge task")) {
     reply = "Absorbed.";
-  } else if (message.includes("GoalForge Codex worker")) {
+  } else if (message.includes("LoopForge Codex worker")) {
     const outputPath = `${Deno.cwd()}/fake-pi-output.txt`;
     write({
       type: "tool_execution_start",

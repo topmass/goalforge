@@ -96,7 +96,7 @@ export class LiveSupervisor {
       threadId: session.threadId,
       phase: "testing",
       headline: "Supervisor sent failure guidance.",
-      detail: "GoalForge detected failing output and steered the active turn.",
+      detail: "LoopForge detected failing output and steered the active turn.",
       risk: "test_failed",
       lastSupervisorAction: message,
       interruptible: true,
@@ -209,8 +209,8 @@ export class LiveSupervisor {
 
 function buildConflictSteerMessage(signal: string): string {
   return [
-    "GoalForge live supervisor:",
-    "Possible file conflict with another GoalForge task.",
+    "LoopForge live supervisor:",
+    "Possible file conflict with another LoopForge task.",
     "Pause broad edits. Inspect the overlapping file ownership, keep your changes scoped, and avoid rewriting work that belongs to the other task.",
     `Signal: ${signal.replace(/\s+/g, " ").trim().slice(0, 500)}`,
   ].join("\n");

@@ -1,5 +1,5 @@
 import { ActivityEventInput } from "../board/types.ts";
-import { GoalForgeConfig, readConfig } from "../board/store.ts";
+import { LoopForgeConfig, readConfig } from "../board/store.ts";
 
 export interface CodexEventHandler {
   (event: ActivityEventInput): void;
@@ -79,7 +79,7 @@ export class CodexAppServerClient implements CodexClient {
 
   constructor(
     private readonly onEvent: CodexEventHandler = () => {},
-    private readonly settings: Pick<GoalForgeConfig, "model" | "reasoningEffort" | "fastMode"> =
+    private readonly settings: Pick<LoopForgeConfig, "model" | "reasoningEffort" | "fastMode"> =
       readConfig(Deno.cwd()),
   ) {}
 
@@ -249,7 +249,7 @@ export class CodexAppServerClient implements CodexClient {
         "--with",
         "openai-codex",
         "python",
-        new URL("../../scripts/goalforge_codex_bridge.py", import.meta.url).pathname,
+        new URL("../../scripts/loopforge_codex_bridge.py", import.meta.url).pathname,
       ],
       cwd,
       stdin: "piped",

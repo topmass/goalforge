@@ -1,10 +1,13 @@
-# GoalForge
+# LoopForge
 
-A local Kanban board that runs coding agents for you. Describe a goal, and GoalForge plans it into
+A local Kanban board that runs coding agents for you. Describe a goal, and LoopForge plans it into
 tasks, runs each task in an isolated git worktree, supervises the agent live, verifies the work with
 an independent test pass that fails closed, reviews, merges, and closes the goal only when real
 evidence exists. A terminal command center shows the board, the agents, and a particle visualization
 of everything in flight.
+
+> LoopForge was formerly GoalForge. The `goalforge` command still works as an alias, and existing
+> `.goalforge` project state and `~/.goalforge` config are picked up automatically.
 
 ## Requirements
 
@@ -17,38 +20,38 @@ of everything in flight.
 - Optional: [pi](https://pi.dev) for the Claude and local-model backends
   (`pnpm add -g @earendil-works/pi-coding-agent`)
 
-Check your setup any time with `goalforge doctor`.
+Check your setup any time with `loopforge doctor`.
 
 ## Install
 
 ```bash
-git clone https://github.com/topmass/goalforge.git
-cd goalforge
-ln -s "$PWD/goalforge" ~/.local/bin/goalforge   # any directory on your PATH
+git clone https://github.com/topmass/loopforge.git
+cd loopforge
+ln -s "$PWD/loopforge" ~/.local/bin/loopforge   # any directory on your PATH
 ```
 
 ## Use it on any project
 
-Point GoalForge at the folder you want it to work in, either by `cd`-ing there or with `-C`:
+Point LoopForge at the folder you want it to work in, either by `cd`-ing there or with `-C`:
 
 ```bash
-cd ~/code/my-project && goalforge        # opens the command center for that project
-goalforge -C ~/code/my-project           # same, from anywhere
+cd ~/code/my-project && loopforge        # opens the command center for that project
+loopforge -C ~/code/my-project           # same, from anywhere
 ```
 
-The first run initializes `.goalforge/` (board database, worktrees, config) and a `WORKFLOW.md`
-contract inside that project. Everything GoalForge does is scoped to that folder.
+The first run initializes `.loopforge/` (board database, worktrees, config) and a `WORKFLOW.md`
+contract inside that project. Everything LoopForge does is scoped to that folder.
 
 Common commands:
 
 ```bash
-goalforge build "add a dark mode toggle"   # plan a goal, run it, close it with evidence
-goalforge goal "refactor the auth flow"    # plan only; review tasks before running
-goalforge run --all                        # run everything that is ready
-goalforge status                           # board, goals, and evidence at a glance
-goalforge health                           # readiness and the next recommended action
-goalforge check                            # run the goal's win-condition probes
-goalforge standup                          # digest: shipped, blocked asks, win conditions
+loopforge build "add a dark mode toggle"   # plan a goal, run it, close it with evidence
+loopforge goal "refactor the auth flow"    # plan only; review tasks before running
+loopforge run --all                        # run everything that is ready
+loopforge status                           # board, goals, and evidence at a glance
+loopforge health                           # readiness and the next recommended action
+loopforge check                            # run the goal's win-condition probes
+loopforge standup                          # digest: shipped, blocked asks, win conditions
 ```
 
 ## Let it run overnight
@@ -58,14 +61,14 @@ test commands, file checks). A goal can only close when every probe passes, and 
 working a goal until they do:
 
 ```bash
-goalforge pursue GOAL-1 --hours 8          # run, probe, replan from failures, repeat
-goalforge pursue --all --hours 8           # work the whole backlog while you sleep
-goalforge pursue GOAL-1 --escalate codex   # local model grinds; stuck passes escalate
+loopforge pursue GOAL-1 --hours 8          # run, probe, replan from failures, repeat
+loopforge pursue --all --hours 8           # work the whole backlog while you sleep
+loopforge pursue GOAL-1 --escalate codex   # local model grinds; stuck passes escalate
 ```
 
 Repair attempts rotate strategy (minimal fix, then diagnose-first, then rewrite), the same failure
 twice triggers escalation or a clean stop with one clear ask, and lessons learned from failures feed
-every future prompt. In the morning, `goalforge standup` tells you what shipped with proof and
+every future prompt. In the morning, `loopforge standup` tells you what shipped with proof and
 exactly what needs you.
 
 ### Rescue model
@@ -76,8 +79,8 @@ exactly how to fix it - it never implements. Toggle it with the highlighted **Re
 TUI footer (click to cycle Off, codex, claude, local, pi) or:
 
 ```bash
-goalforge --rescue codex --rescue-after 2   # saved; works for runs and pursue loops
-goalforge --rescue off
+loopforge --rescue codex --rescue-after 2   # saved; works for runs and pursue loops
+loopforge --rescue off
 ```
 
 With rescue armed, pursue loops also use it as the takeover backend when guidance alone is not
@@ -91,8 +94,8 @@ grinds through the implementation for free. Toggle it with the **Planner** butto
 (click to cycle Off, codex, claude, local, pi) or:
 
 ```bash
-goalforge --planner codex                   # saved; plans and replans on codex
-goalforge --planner off                     # planning follows the main backend again
+loopforge --planner codex                   # saved; plans and replans on codex
+loopforge --planner off                     # planning follows the main backend again
 ```
 
 ### Scout: loops that propose what to build next
@@ -105,9 +108,9 @@ idea never comes back. During long pursue runs the scout adds one pass per hour,
 finished work plus a curated idea list.
 
 ```bash
-goalforge --scout codex                     # arm the scout (or claude, local, pi)
-goalforge scout                             # one scout pass right now
-goalforge ideas                             # review: show / approve / reject <id>
+loopforge --scout codex                     # arm the scout (or claude, local, pi)
+loopforge scout                             # one scout pass right now
+loopforge ideas                             # review: show / approve / reject <id>
 ```
 
 Ideas also appear in the TUI task rail: select one, read the pitch, press y to approve or n to
@@ -129,12 +132,12 @@ search:
 CONF
 docker run -d --name searxng --restart=always -p 8888:8080 \
   -v ~/.config/searxng:/etc/searxng searxng/searxng
-goalforge --search http://127.0.0.1:8888
+loopforge --search http://127.0.0.1:8888
 ```
 
 podman works identically (add `:Z` to the volume on SELinux systems; for reboot survival run
 `systemctl --user enable podman-restart` and `loginctl enable-linger $USER`). Hosting it on a home
-server and pointing every machine's GoalForge at it over your tailnet works great.
+server and pointing every machine's LoopForge at it over your tailnet works great.
 
 In the TUI: Build Goal plans and runs in one click, blocked tasks tell you exactly what they need,
 and Reply both answers a blocked agent and restarts it. The bottom footer row holds the config
@@ -142,19 +145,19 @@ toggles - Rescue, Planner, Scout, and Agents (max concurrent agents) - each a cl
 
 ## Pick the model that does the work
 
-The backend is remembered in `~/.goalforge/config.json`, so set it once:
+The backend is remembered in `~/.loopforge/config.json`, so set it once:
 
 ```bash
-goalforge --codex                                   # default: Codex (codex login)
-goalforge --local --endpoint http://HOST:8080/v1 \
+loopforge --codex                                   # default: Codex (codex login)
+loopforge --local --endpoint http://HOST:8080/v1 \
           --agent-model MODEL_ID                    # any OpenAI-compatible server via pi
-goalforge --claude                                  # Claude via pi (uses your Anthropic
+loopforge --claude                                  # Claude via pi (uses your Anthropic
                                                     # subscription extra usage or API credits)
-goalforge --pi                                      # whatever model pi is configured for
+loopforge --pi                                      # whatever model pi is configured for
 ```
 
 `--local` works with llama.cpp, LM Studio, vLLM, or Ollama. For llama.cpp run `llama-server` with
-`--jinja` (tool calling) and GoalForge auto-detects the serving context window so sessions compact
+`--jinja` (tool calling) and LoopForge auto-detects the serving context window so sessions compact
 before they overflow.
 
 ## See other agents on your board
@@ -163,7 +166,7 @@ Coding agents you run yourself (Claude Code, Codex CLI) can report their status 
 and visualizer:
 
 ```bash
-goalforge hooks install claude   # or: codex
+loopforge hooks install claude   # or: codex
 ```
 
 ## More
@@ -171,4 +174,4 @@ goalforge hooks install claude   # or: codex
 - `WORKFLOW.md` (generated per project): the contract for how agents plan, verify, review, and
   merge, plus authority settings for publishing and blocker triage.
 - `AGENTS.md` / `project-specsheet.md`: durable per-project agent context and memory.
-- `goalforge help`: every command and flag.
+- `loopforge help`: every command and flag.

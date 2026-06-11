@@ -32,7 +32,7 @@ interface TurnWaiter {
 }
 
 export function piBinaryCommand(): string[] {
-  const override = Deno.env.get("GOALFORGE_PI_BIN");
+  const override = Deno.env.get("LOOPFORGE_PI_BIN");
   return override?.trim() ? [override.trim()] : ["pi"];
 }
 
@@ -343,7 +343,7 @@ export class PiRpcClient implements CodexClient {
     if (type === "agent_end") {
       // Pi may compact an overflowed context right after the agent run ends
       // and automatically retry the prompt. Hold the turn open briefly so a
-      // compaction retry continues the same GoalForge turn.
+      // compaction retry continues the same LoopForge turn.
       this.agentEnded = true;
       this.scheduleTurnResolve(raw);
       return;
@@ -484,7 +484,7 @@ function sessionFileFrom(state: JsonObject): string {
     return sessionFile;
   }
   throw new Error(
-    "pi did not report a session file. Session persistence must stay enabled for GoalForge.",
+    "pi did not report a session file. Session persistence must stay enabled for LoopForge.",
   );
 }
 

@@ -1,6 +1,6 @@
-// Resolves which agent backend runs GoalForge workers and builds clients for
+// Resolves which agent backend runs LoopForge workers and builds clients for
 // it. Codex stays the native default; pi (pi.dev) provides every other model:
-// claude = pi with the Anthropic provider, local = pi with a GoalForge-managed
+// claude = pi with the Anthropic provider, local = pi with a LoopForge-managed
 // custom provider pointed at any OpenAI-compatible endpoint (llama.cpp, vLLM,
 // LM Studio, Ollama).
 
@@ -11,7 +11,7 @@ import { ActivityEventInput } from "../board/types.ts";
 import { CodexAppServerClient, CodexClient } from "./codex_app_server.ts";
 import { PiRpcClient } from "./pi_rpc_client.ts";
 
-export const LOCAL_PI_PROVIDER_ID = "goalforge-local";
+export const LOCAL_PI_PROVIDER_ID = "loopforge-local";
 
 export function createAgentClient(
   root: string,
@@ -54,7 +54,7 @@ export function createPlannerClient(
 }
 
 export function piModelsPath(): string {
-  const override = Deno.env.get("GOALFORGE_PI_MODELS_PATH");
+  const override = Deno.env.get("LOOPFORGE_PI_MODELS_PATH");
   if (override?.trim()) {
     return override.trim();
   }
@@ -78,7 +78,7 @@ export function ensureLocalPiProvider(
     ? providers[LOCAL_PI_PROVIDER_ID] as Record<string, unknown>
     : null;
   const desired = {
-    name: "GoalForge Local",
+    name: "LoopForge Local",
     baseUrl: config.local.endpoint,
     api: "openai-completions",
     apiKey: config.local.apiKey || "none",

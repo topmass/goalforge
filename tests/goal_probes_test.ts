@@ -51,7 +51,7 @@ Deno.test("failing probes hold a goal open and supersede prose contract matching
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "card");

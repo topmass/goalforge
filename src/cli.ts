@@ -2,7 +2,7 @@ import { BoardStore } from "./board/store.ts";
 import { TASK_STATUS_LABELS } from "./board/types.ts";
 import { formatGoalLines, formatHealthLines, formatStatusLines } from "./board/status_lines.ts";
 import { summarizeGoalProgress } from "./board/goal_progress.ts";
-import { normalizeRoot, workflowPath } from "./paths.ts";
+import { normalizeRoot, runtimeDirName, workflowPath } from "./paths.ts";
 import { startServer } from "./web/server.ts";
 import { runCommandCenterTui } from "./tui/command_center.ts";
 import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
@@ -11,7 +11,7 @@ import { runScout } from "./workers/goal_scout.ts";
 import { GoalPursuer } from "./workers/goal_pursuer.ts";
 import { formatProbeLines, probeLights, runGoalProbes } from "./workers/goal_probes.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
-import { GoalForgeWorker } from "./workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "./workers/loopforge_worker.ts";
 import { buildProjectMemory } from "./workers/project_memory.ts";
 import { buildTaskCard, ensureProjectKnowledgeFiles } from "./workers/task_memory.ts";
 import {
@@ -143,7 +143,7 @@ try {
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`goalforge: ${message}`);
+  console.error(`loopforge: ${message}`);
   Deno.exit(1);
 }
 
@@ -152,7 +152,7 @@ async function initCommand(): Promise<void> {
   try {
     store.initProject();
     const actions = await ensureGitRepository(root);
-    console.log(`GoalForge initialized at ${root}/.goalforge`);
+    console.log(`LoopForge initialized at ${root}/${runtimeDirName(root)}`);
     console.log(`Workflow ${workflowPath(root)}`);
     for (const action of actions) {
       console.log(action);
@@ -236,7 +236,7 @@ async function buildCommand(args: string[]): Promise<void> {
     console.log(
       `${goal.id} compiled. Running ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
     );
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       onEvent: (event) => {
         const task = event.taskId ?? "system";
         console.log(`[${event.role}:${task}] ${event.kind} ${event.message}`);
@@ -273,13 +273,13 @@ async function runCommand(args: string[]): Promise<void> {
   );
   const taskId = positional[0];
   if (runAll && taskId) {
-    throw new Error("Use either goalforge run TASK-ID or goalforge run --all, not both.");
+    throw new Error("Use either loopforge run TASK-ID or loopforge run --all, not both.");
   }
 
   const store = new BoardStore(root);
   store.initProject();
   await ensureGitRepository(root);
-  const worker = new GoalForgeWorker(root, store, {
+  const worker = new LoopForgeWorker(root, store, {
     onEvent: (event) => {
       const task = event.taskId ?? "system";
       console.log(`[${event.role}:${task}] ${event.kind} ${event.message}`);
@@ -325,7 +325,7 @@ async function openTuiCommand(args: string[]): Promise<void> {
   }
   const bun = resolveExecutable("bun", [homePath(".bun/bin/bun")]);
   if (!bun) {
-    console.error("goalforge: Bun was not found. Falling back to native TUI.");
+    console.error("loopforge: Bun was not found. Falling back to native TUI.");
     await runCommandCenterTui(root, stripPortArgs(args, portArgIndex));
     return;
   }
@@ -366,25 +366,25 @@ async function tuiCommand(args: string[]): Promise<void> {
 }
 
 async function hooksCommand(args: string[]): Promise<void> {
-  const scriptPath = new URL("../scripts/hooks/goalforge_agent_hook.py", import.meta.url).pathname;
+  const scriptPath = new URL("../scripts/hooks/loopforge_agent_hook.py", import.meta.url).pathname;
   const [action, target] = args.filter((arg) => !arg.startsWith("--"));
   const settingsArgIndex = args.indexOf("--settings");
   const settingsOverride = settingsArgIndex >= 0 ? args[settingsArgIndex + 1] : null;
   if (action === "print" || action === undefined) {
-    console.log(`GoalForge agent status hook script:\n  ${scriptPath}`);
+    console.log(`LoopForge agent status hook script:\n  ${scriptPath}`);
     console.log("\nInstall automatically:");
-    console.log("  goalforge hooks install claude   # merges into ~/.claude/settings.json");
-    console.log("  goalforge hooks install codex    # merges into ~/.codex/hooks.json");
+    console.log("  loopforge hooks install claude   # merges into ~/.claude/settings.json");
+    console.log("  loopforge hooks install codex    # merges into ~/.codex/hooks.json");
     console.log("\nManual hook command (register for lifecycle events):");
     console.log(`  ${hookCommand(scriptPath, "<agent-name>")}`);
     console.log(
-      "\nReports go to http://127.0.0.1:4733 (override with GOALFORGE_URL or GOALFORGE_PORT).",
+      "\nReports go to http://127.0.0.1:4733 (override with LOOPFORGE_URL or LOOPFORGE_PORT).",
     );
     console.log("Reports from directories outside the project the server runs in are ignored.");
     return;
   }
   if (action !== "install" || (target !== "claude" && target !== "codex")) {
-    throw new Error("Usage: goalforge hooks [print | install claude | install codex]");
+    throw new Error("Usage: loopforge hooks [print | install claude | install codex]");
   }
   const home = Deno.env.get("HOME") ?? "";
   const settingsPath = settingsOverride ??
@@ -401,9 +401,9 @@ async function hooksCommand(args: string[]): Promise<void> {
   await Deno.mkdir(settingsPath.split("/").slice(0, -1).join("/"), { recursive: true });
   await Deno.writeTextFile(settingsPath, `${JSON.stringify(result.settings, null, 2)}\n`);
   if (result.added.length) {
-    console.log(`Added GoalForge status hook to ${settingsPath} for: ${result.added.join(", ")}`);
+    console.log(`Added LoopForge status hook to ${settingsPath} for: ${result.added.join(", ")}`);
   } else {
-    console.log(`GoalForge status hook already present in ${settingsPath}.`);
+    console.log(`LoopForge status hook already present in ${settingsPath}.`);
   }
   if (target === "codex") {
     console.log("Codex CLI loads hooks when [features] hooks = true in ~/.codex/config.toml.");
@@ -511,7 +511,7 @@ async function scoutCommand(): Promise<void> {
     if (!report.ran) {
       console.log(`Scout did not run: ${report.reason}`);
       if (!readGlobalConfig().scout.enabled) {
-        console.log("Arm it with: goalforge --scout codex (or claude, local, pi)");
+        console.log("Arm it with: loopforge --scout codex (or claude, local, pi)");
       }
       return;
     }
@@ -524,7 +524,7 @@ async function scoutCommand(): Promise<void> {
       console.log(`- ${idea.id}: ${idea.title}`);
     }
     if (report.added.length) {
-      console.log("Review with: goalforge ideas");
+      console.log("Review with: loopforge ideas");
     }
   } finally {
     store.close();
@@ -557,7 +557,7 @@ async function ideasCommand(commandArgs: string[]): Promise<void> {
       console.log(
         `${idea.id} became ${result.goal.id} with ${result.tasks.length} task${
           result.tasks.length === 1 ? "" : "s"
-        } in Ready. Run them with: goalforge run`,
+        } in Ready. Run them with: loopforge run`,
       );
     } finally {
       store.close();
@@ -588,11 +588,11 @@ async function ideasCommand(commandArgs: string[]): Promise<void> {
       return;
     }
     if (action && action !== "list") {
-      throw new Error("Usage: goalforge ideas [list | show <id> | approve <id> | reject <id>]");
+      throw new Error("Usage: loopforge ideas [list | show <id> | approve <id> | reject <id>]");
     }
     const ideas = store.listIdeas("proposed");
     if (!ideas.length) {
-      console.log("No ideas awaiting review. Run the scout with: goalforge scout");
+      console.log("No ideas awaiting review. Run the scout with: loopforge scout");
       return;
     }
     console.log("Ideas awaiting review (in recommended build order):");
@@ -600,14 +600,14 @@ async function ideasCommand(commandArgs: string[]): Promise<void> {
       console.log(`${idea.rank}. ${idea.id}: ${idea.title}`);
     }
     console.log("");
-    console.log("goalforge ideas show <id> | approve <id> | reject <id>");
+    console.log("loopforge ideas show <id> | approve <id> | reject <id>");
   });
 }
 
 function standupCommand(): void {
   usingStore((store) => {
     const board = store.getBoard();
-    console.log("GoalForge standup");
+    console.log("LoopForge standup");
     console.log("");
     const closed = board.goals.filter((goal) => goal.status === "closed").slice(-5);
     console.log("Recently shipped:");
@@ -638,7 +638,7 @@ function standupCommand(): void {
       for (const idea of board.ideas) {
         console.log(`- ${idea.id}: ${idea.title}`);
       }
-      console.log("  (goalforge ideas show <id> | approve <id> | reject <id>)");
+      console.log("  (loopforge ideas show <id> | approve <id> | reject <id>)");
     } else {
       console.log("- none");
     }
@@ -679,7 +679,7 @@ function applyDirFlag(rawArgs: string[]): { root: string; args: string[] } {
     try {
       Deno.chdir(dir);
     } catch {
-      console.error(`goalforge: cannot use directory: ${dir}`);
+      console.error(`loopforge: cannot use directory: ${dir}`);
       Deno.exit(1);
     }
   }
@@ -733,8 +733,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
     });
     console.error(
       config.rescue.enabled
-        ? `GoalForge rescue model: ${config.rescue.backend} after ${config.rescue.afterAttempts} failed attempts (saved)`
-        : "GoalForge rescue model: off (saved)",
+        ? `LoopForge rescue model: ${config.rescue.backend} after ${config.rescue.afterAttempts} failed attempts (saved)`
+        : "LoopForge rescue model: off (saved)",
     );
   }
   if (planner) {
@@ -745,8 +745,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
     });
     console.error(
       config.planner.enabled
-        ? `GoalForge planner model: ${config.planner.backend} compiles and replans goals (saved)`
-        : "GoalForge planner model: off; planning follows the main backend (saved)",
+        ? `LoopForge planner model: ${config.planner.backend} compiles and replans goals (saved)`
+        : "LoopForge planner model: off; planning follows the main backend (saved)",
     );
   }
   if (scout) {
@@ -757,8 +757,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
     });
     console.error(
       config.scout.enabled
-        ? `GoalForge scout: ${config.scout.backend} proposes ideas for you to approve or reject (saved)`
-        : "GoalForge scout: off (saved)",
+        ? `LoopForge scout: ${config.scout.backend} proposes ideas for you to approve or reject (saved)`
+        : "LoopForge scout: off (saved)",
     );
   }
   if (search) {
@@ -767,8 +767,8 @@ function applyBackendFlags(rawArgs: string[]): string[] {
     });
     console.error(
       config.search.endpoint
-        ? `GoalForge web search endpoint: ${config.search.endpoint} (saved; agents search via curl)`
-        : "GoalForge web search: off (saved)",
+        ? `LoopForge web search endpoint: ${config.search.endpoint} (saved; agents search via curl)`
+        : "LoopForge web search: off (saved)",
     );
   }
   if (!backend && !endpoint && !model) {
@@ -790,11 +790,11 @@ function applyBackendFlags(rawArgs: string[]): string[] {
     ...(model && backend === "claude" ? { claude: { model } } : {}),
     ...(model && backend === "pi" ? { pi: { model } } : {}),
   });
-  console.error(`GoalForge agent backend: ${describeBackend(config)} (saved for next time)`);
+  console.error(`LoopForge agent backend: ${describeBackend(config)} (saved for next time)`);
   if (config.backend === "claude") {
     console.error(
       "Note: the claude backend runs through your Anthropic account (claude.ai subscription " +
-        "extra usage or API credits). GoalForge worker runs will consume that budget.",
+        "extra usage or API credits). LoopForge worker runs will consume that budget.",
     );
   }
   if (config.backend === "pi" || config.backend === "claude" || config.backend === "local") {
@@ -913,7 +913,7 @@ async function reviewCommand(args: string[]): Promise<void> {
     const reviewText = [
       task.validation,
       "",
-      `GoalForge review: ${result.verdict.toUpperCase()}`,
+      `LoopForge review: ${result.verdict.toUpperCase()}`,
       result.notes,
     ].filter(Boolean).join("\n");
     store.updateTaskValidation(task.id, reviewText);
@@ -941,7 +941,7 @@ async function reviewCommand(args: string[]): Promise<void> {
         task.id,
         "blocked",
         "merger",
-        "GoalForge cannot merge because this task has no assigned branch.",
+        "LoopForge cannot merge because this task has no assigned branch.",
       );
       console.log(`${task.id} has no branch to merge. Moved to Inbox.`);
       return;
@@ -988,7 +988,7 @@ function messageCommand(args: string[]): void {
   const taskId = args[0];
   const message = args.slice(1).join(" ").trim();
   if (!taskId || !message) {
-    throw new Error('Usage: goalforge message TASK-ID "message"');
+    throw new Error('Usage: loopforge message TASK-ID "message"');
   }
 
   usingStore((store) => {
@@ -1016,7 +1016,7 @@ async function mainCommand(args: string[]): Promise<void> {
       return;
     }
     if (action === "ensure") {
-      const worker = new GoalForgeWorker(root, store);
+      const worker = new LoopForgeWorker(root, store);
       const threadId = await worker.ensureMainThread();
       const state = store.getProjectState();
       console.log(`Main thread: ${threadId ?? state.mainThreadId ?? "none"}`);
@@ -1035,7 +1035,7 @@ async function mainCommand(args: string[]): Promise<void> {
     if (action === "absorb") {
       const taskId = args[1];
       if (!taskId) {
-        throw new Error("Usage: goalforge main absorb TASK-ID");
+        throw new Error("Usage: loopforge main absorb TASK-ID");
       }
       const task = store.getTask(taskId);
       const summary = [
@@ -1056,7 +1056,7 @@ function taskCommand(args: string[]): void {
   const taskId = args[0];
   const action = args[1] ?? "card";
   if (!taskId) {
-    throw new Error("Usage: goalforge task TASK-ID [card|threads]");
+    throw new Error("Usage: loopforge task TASK-ID [card|threads]");
   }
   usingStore((store) => {
     const task = store.getTask(taskId);
@@ -1079,11 +1079,11 @@ async function steerCommand(args: string[]): Promise<void> {
   const taskId = args[0];
   const message = args.slice(1).join(" ").trim();
   if (!taskId || !message) {
-    throw new Error('Usage: goalforge steer TASK-ID "message"');
+    throw new Error('Usage: loopforge steer TASK-ID "message"');
   }
   const store = new BoardStore(root);
   try {
-    const worker = new GoalForgeWorker(root, store);
+    const worker = new LoopForgeWorker(root, store);
     const event = await worker.steerTask(taskId, message);
     console.log(event.message);
   } finally {
@@ -1094,7 +1094,7 @@ async function steerCommand(args: string[]): Promise<void> {
 function compactCommand(args: string[]): void {
   const taskId = args[0];
   if (!taskId) {
-    throw new Error("Usage: goalforge compact TASK-ID");
+    throw new Error("Usage: loopforge compact TASK-ID");
   }
   usingStore((store) => {
     const task = store.getTask(taskId);
@@ -1143,12 +1143,12 @@ async function dogfoodCommand(args: string[]): Promise<void> {
   }
   const python = resolveExecutable("python3", []);
   if (!python) {
-    throw new Error("python3 is required to run the GoalForge dogfood gate.");
+    throw new Error("python3 is required to run the LoopForge dogfood gate.");
   }
   const script = new URL("../scripts/smoke_opentui_tui.py", import.meta.url).pathname;
-  const goalforgeBin = new URL("../goalforge", import.meta.url).pathname;
+  const loopforgeBin = new URL("../loopforge", import.meta.url).pathname;
   const repo = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
-  console.log("Running GoalForge dogfood readiness gate...");
+  console.log("Running LoopForge dogfood readiness gate...");
   const status = await new Deno.Command(python, {
     args: [script, "--dogfood-only"],
     cwd: repo,
@@ -1156,20 +1156,20 @@ async function dogfoodCommand(args: string[]): Promise<void> {
     stdout: "inherit",
     stderr: "inherit",
     env: {
-      GOALFORGE_REPO: repo,
-      GOALFORGE_BIN: goalforgeBin,
+      LOOPFORGE_REPO: repo,
+      LOOPFORGE_BIN: loopforgeBin,
     },
   }).spawn().status;
   if (!status.success) {
-    throw new Error(`GoalForge dogfood gate failed with code ${status.code}.`);
+    throw new Error(`LoopForge dogfood gate failed with code ${status.code}.`);
   }
-  console.log("GoalForge dogfood readiness gate passed.");
+  console.log("LoopForge dogfood readiness gate passed.");
 }
 
 async function liveDogfoodCommand(args: string[]): Promise<void> {
   const forwarded = args.filter((arg) => arg !== "--live");
   const script = new URL("../scripts/live_dogfood.ts", import.meta.url).pathname;
-  console.log("Running GoalForge live dogfood readiness gate...");
+  console.log("Running LoopForge live dogfood readiness gate...");
   const status = await new Deno.Command(Deno.execPath(), {
     args: [
       "run",
@@ -1186,9 +1186,9 @@ async function liveDogfoodCommand(args: string[]): Promise<void> {
     stderr: "inherit",
   }).spawn().status;
   if (!status.success) {
-    throw new Error(`GoalForge live dogfood gate failed with code ${status.code}.`);
+    throw new Error(`LoopForge live dogfood gate failed with code ${status.code}.`);
   }
-  console.log("GoalForge live dogfood readiness gate passed.");
+  console.log("LoopForge live dogfood readiness gate passed.");
 }
 
 function doctorCommand(): void {
@@ -1265,7 +1265,7 @@ function doctorCommand(): void {
     console.log("Doctor: action needed before running task agents.");
     return;
   }
-  console.log("Doctor: GoalForge can start. Check `goalforge health` for project state.");
+  console.log("Doctor: LoopForge can start. Check `loopforge health` for project state.");
 }
 
 function goalsCommand(): void {
@@ -1286,46 +1286,46 @@ function usingStore<T>(fn: (store: BoardStore) => T): T {
 }
 
 function printHelp(): void {
-  console.log(`GoalForge
+  console.log(`LoopForge
 
 Usage:
-  goalforge
-  goalforge init
-  goalforge goal "<goal text>"
-  goalforge build "<goal text>"
-  goalforge run [TASK-ID]
-  goalforge run --all [--limit N]
-  goalforge review TASK-ID
-  goalforge delete TASK-ID
-  goalforge message TASK-ID "<message>"
-  goalforge serve [--port 4733]
-  goalforge tui [--native]
-  goalforge opentui [--port 4733]
-  goalforge board [--port 4733]
-  goalforge merge TASK-ID
-  goalforge main status|ensure|reset|absorb
-  goalforge task TASK-ID [card|threads]
-  goalforge steer TASK-ID "<message>"
-  goalforge compact TASK-ID
-  goalforge close-goal [GOAL-ID]
-  goalforge goals
-  goalforge health
-  goalforge dogfood [--live] [--keep]
-  goalforge doctor
-  goalforge status
-  goalforge hooks [print | install claude | install codex]
-  goalforge check [GOAL-ID]
-  goalforge pursue [GOAL-ID | --all] [--hours N] [--iterations N] [--escalate codex]
-  goalforge lesson ["text to remember"]
-  goalforge scout                            # one scout pass: propose ideas now
-  goalforge ideas [show|approve|reject <id>] # review the idea list (you gatekeep)
-  goalforge standup
+  loopforge
+  loopforge init
+  loopforge goal "<goal text>"
+  loopforge build "<goal text>"
+  loopforge run [TASK-ID]
+  loopforge run --all [--limit N]
+  loopforge review TASK-ID
+  loopforge delete TASK-ID
+  loopforge message TASK-ID "<message>"
+  loopforge serve [--port 4733]
+  loopforge tui [--native]
+  loopforge opentui [--port 4733]
+  loopforge board [--port 4733]
+  loopforge merge TASK-ID
+  loopforge main status|ensure|reset|absorb
+  loopforge task TASK-ID [card|threads]
+  loopforge steer TASK-ID "<message>"
+  loopforge compact TASK-ID
+  loopforge close-goal [GOAL-ID]
+  loopforge goals
+  loopforge health
+  loopforge dogfood [--live] [--keep]
+  loopforge doctor
+  loopforge status
+  loopforge hooks [print | install claude | install codex]
+  loopforge check [GOAL-ID]
+  loopforge pursue [GOAL-ID | --all] [--hours N] [--iterations N] [--escalate codex]
+  loopforge lesson ["text to remember"]
+  loopforge scout                            # one scout pass: propose ideas now
+  loopforge ideas [show|approve|reject <id>] # review the idea list (you gatekeep)
+  loopforge standup
 
 Target directory (any command):
-  -C, --dir <path>            Run GoalForge in that project folder instead of the
+  -C, --dir <path>            Run LoopForge in that project folder instead of the
                               current directory
 
-Agent backend (any command, saved to ~/.goalforge/config.json):
+Agent backend (any command, saved to ~/.loopforge/config.json):
   --codex                     Native Codex app-server (default)
   --pi [--agent-model M]      pi (pi.dev) with its configured or given model
   --claude [--agent-model M]  Claude via pi (uses your Anthropic extra usage budget)
@@ -1349,6 +1349,6 @@ Scout (saved; proposes ideas, you stay the gatekeeper):
   --search <url|off>                     SearXNG-style endpoint agents use for web
                                          searches via curl (works on every backend)
 
-Running goalforge with no command opens the TUI.
+Running loopforge with no command opens the TUI.
 `);
 }

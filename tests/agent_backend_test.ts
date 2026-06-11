@@ -16,15 +16,15 @@ import { PiRpcClient } from "../src/workers/pi_rpc_client.ts";
 
 function withTempHome(fn: () => void): void {
   const home = Deno.makeTempDirSync();
-  const previous = Deno.env.get("GOALFORGE_HOME");
-  Deno.env.set("GOALFORGE_HOME", home);
+  const previous = Deno.env.get("LOOPFORGE_HOME");
+  Deno.env.set("LOOPFORGE_HOME", home);
   try {
     fn();
   } finally {
     if (previous === undefined) {
-      Deno.env.delete("GOALFORGE_HOME");
+      Deno.env.delete("LOOPFORGE_HOME");
     } else {
-      Deno.env.set("GOALFORGE_HOME", previous);
+      Deno.env.set("LOOPFORGE_HOME", previous);
     }
     Deno.removeSync(home, { recursive: true });
   }
@@ -57,7 +57,7 @@ Deno.test("agent client factory selects the configured backend", () => {
       updateGlobalConfig({ backend: "pi" });
       assert(createAgentClient(root, () => {}) instanceof PiRpcClient);
       const modelsPath = `${root}/models.json`;
-      Deno.env.set("GOALFORGE_PI_MODELS_PATH", modelsPath);
+      Deno.env.set("LOOPFORGE_PI_MODELS_PATH", modelsPath);
       try {
         updateGlobalConfig({ backend: "local" });
         assert(createAgentClient(root, () => {}) instanceof PiRpcClient);
@@ -67,7 +67,7 @@ Deno.test("agent client factory selects the configured backend", () => {
           readGlobalConfig().local.endpoint,
         );
       } finally {
-        Deno.env.delete("GOALFORGE_PI_MODELS_PATH");
+        Deno.env.delete("LOOPFORGE_PI_MODELS_PATH");
       }
     } finally {
       Deno.removeSync(root, { recursive: true });

@@ -43,7 +43,7 @@ import { runWorkflowHooks } from "./workflow_hooks.ts";
 import { PROMPTS } from "../board/prompts.ts";
 import { readWorkflow, WorkflowRuntime } from "../workflow/workflow.ts";
 
-export interface GoalForgeWorkerOptions {
+export interface LoopForgeWorkerOptions {
   onEvent?: (event: ActivityEvent) => void;
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
@@ -56,7 +56,7 @@ class TaskStopRequestedError extends Error {}
 
 class TriageRetryError extends Error {}
 
-export class GoalForgeWorker {
+export class LoopForgeWorker {
   readonly root: string;
   readonly store: BoardStore;
   readonly onEvent?: (event: ActivityEvent) => void;
@@ -67,7 +67,7 @@ export class GoalForgeWorker {
   private readonly createRescueClient?: RescueClientFactory;
   private mergeChain: Promise<void> = Promise.resolve();
 
-  constructor(root: string, store: BoardStore, options: GoalForgeWorkerOptions = {}) {
+  constructor(root: string, store: BoardStore, options: LoopForgeWorkerOptions = {}) {
     this.root = root;
     this.store = store;
     this.onEvent = options.onEvent;
@@ -333,7 +333,7 @@ export class GoalForgeWorker {
       task = this.store.updateTaskLoop(task.id, {
         phase: "planning",
         currentGate: "context",
-        nextAction: "GoalForge is reading project instructions and preparing task context.",
+        nextAction: "LoopForge is reading project instructions and preparing task context.",
         needsInputPrompt: null,
       });
       const assignment = await prepareTaskWorktree(this.root, task, workflow.worktreesDir);
@@ -344,7 +344,7 @@ export class GoalForgeWorker {
       task = this.store.updateTaskLoop(task.id, {
         phase: "planning",
         currentGate: "worktree",
-        nextAction: "GoalForge assigned an isolated worktree and is writing the task packet.",
+        nextAction: "LoopForge assigned an isolated worktree and is writing the task packet.",
       });
       this.emit(
         this.store.appendEvent(
@@ -512,9 +512,9 @@ export class GoalForgeWorker {
           phase: "testing",
           currentGate: "test-engineer",
           verificationSummary: repairEvidence,
-          nextAction: `GoalForge test engineer is checking attempt ${loopTurn}/${maxTurns}.`,
+          nextAction: `LoopForge test engineer is checking attempt ${loopTurn}/${maxTurns}.`,
         });
-        supervisor.markPhase("testing", "GoalForge test engineer is validating the task.");
+        supervisor.markPhase("testing", "LoopForge test engineer is validating the task.");
         this.throwIfStopRequested(run.id);
         capturedAgentText = "";
         captureTarget = "test-engineer";
@@ -682,13 +682,13 @@ export class GoalForgeWorker {
         );
       }
       if (!turn || !testTurn) {
-        throw new Error("GoalForge worker did not run implementation and verification turns.");
+        throw new Error("LoopForge worker did not run implementation and verification turns.");
       }
       this.store.updateTaskLoop(task.id, {
         phase: "reviewing",
         currentGate: "verification",
         verificationSummary: verificationNotes,
-        nextAction: "Verification passed. GoalForge is preparing commit and review.",
+        nextAction: "Verification passed. LoopForge is preparing commit and review.",
         needsInputPrompt: null,
       });
       this.throwIfStopRequested(run.id);
@@ -714,7 +714,7 @@ export class GoalForgeWorker {
         phase: "reviewing",
         currentGate: "commit",
         verificationSummary,
-        nextAction: "GoalForge is creating a commit before automatic review.",
+        nextAction: "LoopForge is creating a commit before automatic review.",
       });
       const commit = await safeGitCommit(
         session.cwd,
@@ -767,14 +767,14 @@ export class GoalForgeWorker {
           verificationSummary,
           nextAction: "Fix the git commit blocker, add input if needed, then restart this task.",
           needsInputPrompt:
-            "GoalForge could not create a commit. Check validation for git status and nested repository details.",
+            "LoopForge could not create a commit. Check validation for git status and nested repository details.",
         });
         this.emit(
           this.store.requestTransition(
             task.id,
             "blocked",
             "worker",
-            "GoalForge could not create a commit. Check validation for git status and nested repository details.",
+            "LoopForge could not create a commit. Check validation for git status and nested repository details.",
           ).event,
         );
         this.store.finishRun(run.id, "failed");
@@ -839,7 +839,7 @@ export class GoalForgeWorker {
             task.id,
             "blocked",
             "worker",
-            `GoalForge needs input: ${message}`,
+            `LoopForge needs input: ${message}`,
           ).event,
         );
       } catch {
@@ -884,7 +884,7 @@ export class GoalForgeWorker {
           task.id,
           "in_progress",
           "core",
-          "GoalForge harness claimed this ops task.",
+          "LoopForge harness claimed this ops task.",
         ).event,
       );
       task = await this.executePublish(task.id, run.id);
@@ -896,7 +896,7 @@ export class GoalForgeWorker {
       return this.blockOpsTask(
         task.id,
         run.id,
-        `GoalForge publish failed: ${
+        `LoopForge publish failed: ${
           shortName(message, 300)
         } Fix the remote or credentials, then restart this task.`,
       );
@@ -934,7 +934,7 @@ export class GoalForgeWorker {
     this.store.updateTaskLoop(task.id, {
       phase: "working",
       currentGate: "publish",
-      nextAction: "GoalForge is committing the root working tree and pushing to the remote.",
+      nextAction: "LoopForge is committing the root working tree and pushing to the remote.",
       needsInputPrompt: null,
     });
     this.store.upsertAgentStatus({
@@ -966,7 +966,7 @@ export class GoalForgeWorker {
     this.store.updateTaskLoop(task.id, {
       phase: "testing",
       currentGate: "verification",
-      nextAction: "GoalForge is verifying the remote matches the local head.",
+      nextAction: "LoopForge is verifying the remote matches the local head.",
     });
     task = this.store.updateTaskValidation(task.id, buildPublishValidation(result));
     task = this.store.updateTaskCard(task.id, buildTaskCard(task));
@@ -1031,7 +1031,7 @@ export class GoalForgeWorker {
     const fingerprint = fingerprintBlocker(input.blocker);
     if (task.blockedFingerprint && task.blockedFingerprint === fingerprint) {
       return escalate(
-        "Triage skipped: the same blocker repeated, so GoalForge is escalating to the user.",
+        "Triage skipped: the same blocker repeated, so LoopForge is escalating to the user.",
         input.blocker,
       );
     }
@@ -1053,7 +1053,7 @@ export class GoalForgeWorker {
     this.store.updateTaskLoop(task.id, {
       phase: "reviewing",
       currentGate: "triage",
-      nextAction: "GoalForge main agent is triaging the worker blocker.",
+      nextAction: "LoopForge main agent is triaging the worker blocker.",
     });
     this.store.upsertAgentStatus({
       taskId: task.id,
@@ -1127,7 +1127,7 @@ export class GoalForgeWorker {
         const message = error instanceof Error ? error.message : String(error);
         return escalate(
           `Main agent tried to publish but it failed: ${shortName(message, 160)}`,
-          `GoalForge tried to publish but it failed: ${
+          `LoopForge tried to publish but it failed: ${
             shortName(message, 240)
           } Fix the remote or credentials, then restart this task.`,
         );
@@ -1186,7 +1186,7 @@ export class GoalForgeWorker {
         runId,
         phase: "blocked",
         headline: "Stopping active turn.",
-        detail: "GoalForge is asking Codex to stop this task.",
+        detail: "LoopForge is asking Codex to stop this task.",
         risk: "needs_user",
         interruptible: false,
       });
@@ -1226,7 +1226,7 @@ export class GoalForgeWorker {
       const session = await this.startSeededMainThread(codex);
       this.store.setMainThread(
         session.threadId,
-        "Project main thread created and seeded by GoalForge. Child task threads fork from this memory thread and report compact handoffs here.",
+        "Project main thread created and seeded by LoopForge. Child task threads fork from this memory thread and report compact handoffs here.",
       );
       return session.threadId;
     } finally {
@@ -1253,7 +1253,7 @@ export class GoalForgeWorker {
       this.store.updateMainThreadSummary(
         [
           projectState.mainThreadSummary,
-          "Main thread compaction requested by GoalForge.",
+          "Main thread compaction requested by LoopForge.",
         ].filter(Boolean).join("\n"),
       );
       return this.store.appendEvent(
@@ -1283,7 +1283,7 @@ export class GoalForgeWorker {
       developerInstructions: mainThreadDeveloperInstructions(this.root),
     });
     await codex.runTurn(session, {
-      title: "GoalForge main thread seed",
+      title: "LoopForge main thread seed",
       prompt: buildMainThreadSeedPrompt(this.root),
     });
     await codex.setThreadName?.(session, mainThreadName(this.root));
@@ -1390,14 +1390,14 @@ export class GoalForgeWorker {
       runId,
       phase: "reviewing",
       headline: "Automatic review started.",
-      detail: "GoalForge is reviewing the task before merge.",
+      detail: "LoopForge is reviewing the task before merge.",
       risk: "none",
       interruptible: false,
     });
     this.store.updateTaskLoop(task.id, {
       phase: "reviewing",
       currentGate: "automatic-review",
-      nextAction: "GoalForge reviewer is checking scope, diff, and validation evidence.",
+      nextAction: "LoopForge reviewer is checking scope, diff, and validation evidence.",
     });
     const reviewer = new GoalReviewer(this.root, {
       createCodexClient: this.createCodexClient,
@@ -1444,7 +1444,7 @@ export class GoalForgeWorker {
     const reviewText = [
       latest.validation,
       "",
-      `GoalForge review: ${result.verdict.toUpperCase()}`,
+      `LoopForge review: ${result.verdict.toUpperCase()}`,
       result.notes,
     ].filter(Boolean).join("\n");
     this.store.updateTaskValidation(task.id, reviewText);
@@ -1493,15 +1493,15 @@ export class GoalForgeWorker {
       this.store.updateTaskLoop(task.id, {
         phase: "blocked",
         currentGate: "merge",
-        nextAction: "GoalForge needs a task branch before it can merge this work.",
-        needsInputPrompt: "GoalForge cannot merge because this task has no assigned branch.",
+        nextAction: "LoopForge needs a task branch before it can merge this work.",
+        needsInputPrompt: "LoopForge cannot merge because this task has no assigned branch.",
       });
       this.emit(
         this.store.requestTransition(
           task.id,
           "blocked",
           "merger",
-          "GoalForge cannot merge because this task has no assigned branch.",
+          "LoopForge cannot merge because this task has no assigned branch.",
         ).event,
       );
       return this.store.getTask(task.id);
@@ -1521,7 +1521,7 @@ export class GoalForgeWorker {
     this.store.updateTaskLoop(task.id, {
       phase: "reviewing",
       currentGate: "merge",
-      nextAction: "GoalForge is merging the approved task branch.",
+      nextAction: "LoopForge is merging the approved task branch.",
     });
     this.store.upsertAgentStatus({
       taskId: task.id,
@@ -1553,7 +1553,7 @@ export class GoalForgeWorker {
     doneTask = this.store.updateTaskLoop(doneTask.id, {
       phase: "remembering",
       currentGate: "project-memory",
-      nextAction: "GoalForge is updating durable project memory from the task handoff.",
+      nextAction: "LoopForge is updating durable project memory from the task handoff.",
     });
     doneTask = this.store.updateTaskCard(doneTask.id, buildTaskCard(doneTask));
     appendSpecsheetHandoff(this.root, doneTask);
@@ -1636,8 +1636,8 @@ export class GoalForgeWorker {
       verificationPlan: repairTaskVerificationPlan(contractOnly),
       workpad: [
         contractOnly
-          ? "Automatically created by GoalForge because all current tasks finished but the goal completion contract still lacked proof."
-          : "Automatically created by GoalForge because all current tasks finished but completion evidence was incomplete.",
+          ? "Automatically created by LoopForge because all current tasks finished but the goal completion contract still lacked proof."
+          : "Automatically created by LoopForge because all current tasks finished but completion evidence was incomplete.",
         `Source task: ${sourceTask?.id ?? "queue preflight"}`,
       ].join("\n"),
     }]);
@@ -1687,7 +1687,7 @@ function repairTaskDescription(contractOnly: boolean, gaps: string[]): string {
   return [
     contractOnly
       ? "Collect or add the missing validation evidence required by the active goal completion contract."
-      : "Collect or add the missing validation evidence required before GoalForge can close this goal.",
+      : "Collect or add the missing validation evidence required before LoopForge can close this goal.",
     "",
     contractOnly ? "Missing contract proof:" : "Missing completion evidence:",
     ...gaps.map((gap) => `- ${gap}`),
@@ -1711,7 +1711,7 @@ function repairTaskVerificationPlan(contractOnly: boolean): string {
   return [
     contractOnly
       ? "- Inspect the goal completion contract and current evidence gaps."
-      : "- Inspect current GoalForge validation evidence gaps for the completed goal.",
+      : "- Inspect current LoopForge validation evidence gaps for the completed goal.",
     contractOnly
       ? "- Run the cheapest reliable validation that proves the missing contract clause."
       : "- Run or inspect the cheapest reliable validation that proves the missing evidence entry.",
@@ -1722,12 +1722,12 @@ function repairTaskVerificationPlan(contractOnly: boolean): string {
 }
 
 function publishCommitMessage(task: Task): string {
-  return shortName(task.title, 72) || `GoalForge publish for ${task.id}`;
+  return shortName(task.title, 72) || `LoopForge publish for ${task.id}`;
 }
 
 function buildPublishValidation(result: PublishResult): string {
   return [
-    "GoalForge publish action completed.",
+    "LoopForge publish action completed.",
     "Turn status: completed",
     "Test turn status: completed",
     "",
@@ -1747,7 +1747,7 @@ function buildPublishValidation(result: PublishResult): string {
     "Git status:",
     result.status || "clean",
     "",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
     "- Deterministic publish verification: the remote head matches the local head after push.",
   ].join("\n");
 }
@@ -1764,7 +1764,7 @@ function publishHandoff(task: Task, result: PublishResult): string {
 
 function buildPullRequestBody(validation: string, workpad: string): string {
   return [
-    "Created by GoalForge during automatic review.",
+    "Created by LoopForge during automatic review.",
     "",
     "## Validation",
     validation || "No validation evidence recorded.",
@@ -1793,9 +1793,9 @@ function buildWorkerPrompt(
     ["worker.md", PROMPTS["worker.md"]],
   ].map(([name, content]) => `## ${name}\n${content}`).join("\n\n");
 
-  return `You are a GoalForge Codex worker.
+  return `You are a LoopForge Codex worker.
 
-GoalForge instructions:
+LoopForge instructions:
 ${instructions}
 
 Project AGENTS.md context from the original folder:
@@ -1804,10 +1804,10 @@ ${projectInstructions}
 Repo WORKFLOW.md instructions:
 ${workflowInstructions}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${projectMemory}
 
-GoalForge context manifest:
+LoopForge context manifest:
 ${task.contextManifestPath ?? "No generated context manifest was assigned."}
 
 Queued messages for this task:
@@ -1841,14 +1841,14 @@ Rules:
 - Read the generated context manifest before editing when it is present.
 - Use Codex-native subagents or delegation when they materially help with independent investigation, implementation, testing, or review without overlapping work.
 - Work only in this assigned worktree.
-- Do not inspect or modify ${root}/.goalforge/board.sqlite or any GoalForge runtime state. The GoalForge daemon records board, workpad, status, and validation updates after your turn completes.
+- Do not inspect or modify ${root}/.loopforge/board.sqlite or any LoopForge runtime state. The LoopForge daemon records board, workpad, status, and validation updates after your turn completes.
 - Make the implementation changes needed for this task.
-- Do not create commits yourself. The GoalForge daemon will commit completed work after your turn.
+- Do not create commits yourself. The LoopForge daemon will commit completed work after your turn.
 - Work as a bounded loop: understand, plan briefly, edit, verify, repair if needed, then hand off exact evidence.
 - Keep scope tight. If you discover unrelated or follow-up work, mention it in your final response instead of doing it silently.
 - Run the exact validation needed for the files you touch.
 - Do not wait for user input. Only an absolute blocker from autonomy.md may stop this task; for anything else decide, note it, and keep going. If an acceptance criterion needs the running app, manual QA, or visual review, complete the work and record "Needs manual verification: <what and how>" in your handoff.
-- End with a compact GoalForge handoff containing changed files, validation commands/results, decisions, risks, and follow-ups.
+- End with a compact LoopForge handoff containing changed files, validation commands/results, decisions, risks, and follow-ups.
 `;
 }
 
@@ -1873,10 +1873,10 @@ function repairStrategy(loopTurn: number): string {
 }
 
 function buildMainThreadSeedPrompt(root: string): string {
-  return `You are the persistent GoalForge main thread for ${root}.
+  return `You are the persistent LoopForge main thread for ${root}.
 
 Role:
-- Keep project-level memory for GoalForge.
+- Keep project-level memory for LoopForge.
 - Future task workers may fork from this thread into isolated worktrees.
 - Completed task workers will report compact handoffs back here.
 
@@ -1887,21 +1887,21 @@ Rules:
 }
 
 function mainThreadName(root: string): string {
-  return `GoalForge - ${projectName(root)} - main`;
+  return `LoopForge - ${projectName(root)} - main`;
 }
 
 function taskThreadName(root: string, task: Task): string {
-  return `GoalForge - ${projectName(root)} - ${task.id} - ${shortName(task.title, 48)}`;
+  return `LoopForge - ${projectName(root)} - ${task.id} - ${shortName(task.title, 48)}`;
 }
 
 function taskThreadOptions(root: string, task: Task): CodexSessionOptions {
   return {
     name: taskThreadName(root, task),
     developerInstructions: [
-      "You are a GoalForge task worker running as a child Codex thread.",
+      "You are a LoopForge task worker running as a child Codex thread.",
       "Work only in the assigned worktree.",
       "Read the generated context manifest and project AGENTS.md before editing.",
-      "Do not mutate GoalForge runtime database or .goalforge state directly.",
+      "Do not mutate LoopForge runtime database or .loopforge state directly.",
       "End with a compact handoff containing changed files, validation, decisions, risks, and follow-ups.",
     ].join("\n"),
   };
@@ -1909,9 +1909,9 @@ function taskThreadOptions(root: string, task: Task): CodexSessionOptions {
 
 function mainThreadDeveloperInstructions(root: string): string {
   return [
-    `You are the persistent GoalForge main thread for ${root}.`,
+    `You are the persistent LoopForge main thread for ${root}.`,
     "Keep durable project memory, decisions, completed handoffs, conflicts, and follow-ups.",
-    "Do not perform task implementation work in this thread unless GoalForge explicitly asks.",
+    "Do not perform task implementation work in this thread unless LoopForge explicitly asks.",
     "Prefer compact factual summaries over raw logs.",
   ].join("\n");
 }

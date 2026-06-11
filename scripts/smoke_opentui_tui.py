@@ -15,8 +15,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-REPO = os.environ.get("GOALFORGE_REPO", str(Path(__file__).resolve().parents[1]))
-GOALFORGE = os.environ.get("GOALFORGE_BIN", str(Path(REPO) / "goalforge"))
+REPO = os.environ.get("LOOPFORGE_REPO", str(Path(__file__).resolve().parents[1]))
+LOOPFORGE = os.environ.get("LOOPFORGE_BIN", str(Path(REPO) / "loopforge"))
 
 def main() -> int:
     if "--dogfood-only" in sys.argv:
@@ -31,9 +31,9 @@ def main() -> int:
 
 def run_task_smoke() -> int:
     port = free_port()
-    project = tempfile.mkdtemp(prefix="goalforge-opentui-")
+    project = tempfile.mkdtemp(prefix="loopforge-opentui-")
     subprocess.run(
-        [GOALFORGE, "main", "reset", "smoke-main-thread"],
+        [LOOPFORGE, "main", "reset", "smoke-main-thread"],
         cwd=project,
         check=True,
         stdout=subprocess.DEVNULL,
@@ -44,7 +44,7 @@ def run_task_smoke() -> int:
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "44"
         os.chdir(project)
-        os.execvp(GOALFORGE, [GOALFORGE, "tui", "--port", str(port)])
+        os.execvp(LOOPFORGE, [LOOPFORGE, "tui", "--port", str(port)])
 
     output = b""
     status = None
@@ -134,7 +134,7 @@ def run_task_smoke() -> int:
         "pressed_delete_key": pressed_delete_key,
         "typed_second_task": typed_second_task,
         "clicked_quit": clicked_quit,
-        "title": "GoalForge Command Center" in text,
+        "title": "LoopForge Command Center" in text,
         "task_board": "Task Board" in text,
         "task_sections": "Working / Ready" in text and "Needs Input" in text and "Done" in text,
         "task_details": "Task Details" in text,
@@ -171,14 +171,14 @@ def run_task_smoke() -> int:
 
 def run_close_goal_smoke() -> int:
     port = free_port()
-    project = tempfile.mkdtemp(prefix="goalforge-opentui-close-")
+    project = tempfile.mkdtemp(prefix="loopforge-opentui-close-")
     seed_close_ready_goal(project)
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "36"
         os.chdir(project)
-        os.execvp(GOALFORGE, [GOALFORGE, "tui", "--port", str(port)])
+        os.execvp(LOOPFORGE, [LOOPFORGE, "tui", "--port", str(port)])
 
     output = b""
     status = None
@@ -240,14 +240,14 @@ def run_close_goal_smoke() -> int:
 
 def run_task_details_scroll_smoke() -> int:
     port = free_port()
-    project = tempfile.mkdtemp(prefix="goalforge-opentui-scroll-")
+    project = tempfile.mkdtemp(prefix="loopforge-opentui-scroll-")
     seed_scroll_task(project)
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "36"
         os.chdir(project)
-        os.execvp(GOALFORGE, [GOALFORGE, "tui", "--port", str(port)])
+        os.execvp(LOOPFORGE, [LOOPFORGE, "tui", "--port", str(port)])
 
     output = b""
     status = None
@@ -306,14 +306,14 @@ def run_task_details_scroll_smoke() -> int:
 
 def run_review_label_smoke() -> int:
     port = free_port()
-    project = tempfile.mkdtemp(prefix="goalforge-opentui-review-")
+    project = tempfile.mkdtemp(prefix="loopforge-opentui-review-")
     seed_review_task(project)
     pid, fd = pty.fork()
     if pid == 0:
         os.environ["COLUMNS"] = "120"
         os.environ["LINES"] = "36"
         os.chdir(project)
-        os.execvp(GOALFORGE, [GOALFORGE, "tui", "--port", str(port)])
+        os.execvp(LOOPFORGE, [LOOPFORGE, "tui", "--port", str(port)])
 
     output = b""
     status = None
@@ -367,7 +367,7 @@ def run_review_label_smoke() -> int:
 
 def run_dogfood_build_smoke() -> int:
     port = free_port()
-    project = tempfile.mkdtemp(prefix="goalforge-opentui-dogfood-")
+    project = tempfile.mkdtemp(prefix="loopforge-opentui-dogfood-")
     server = subprocess.Popen(
         [
             "/home/topmass/.deno/bin/deno",
@@ -549,7 +549,7 @@ try {
     "Commit: abc123",
     "Git status:",
     "clean",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
   const ready = store.getTask(task.id);
   store.updateTaskCard(ready.id, buildTaskCard(ready));
@@ -639,7 +639,7 @@ try {
     `scroll detail ${index + 1} keeps the task details panel long enough to need scrolling`
   ).join(" ");
   const { task } = store.createGoal(`Scroll task details ${details}`);
-  store.requestTransition(task.id, "blocked", "worker", `GoalForge needs input: ${details}`);
+  store.requestTransition(task.id, "blocked", "worker", `LoopForge needs input: ${details}`);
 } finally {
   store.close();
 }

@@ -38,7 +38,7 @@ export async function consultRescue(input: {
   try {
     const diff = await collectDiff(input.worktreePath);
     const session = await codex.startSession(input.worktreePath, {
-      name: `GoalForge rescue - ${input.task.id}`,
+      name: `LoopForge rescue - ${input.task.id}`,
     });
     await codex.runTurn(session, {
       title: `${input.task.id}: rescue`,
@@ -81,7 +81,7 @@ export function buildRescuePrompt(
   diff: string,
   attempts: number,
 ): string {
-  return `You are the GoalForge rescue model: a senior engineer reviewing a stuck task.
+  return `You are the LoopForge rescue model: a senior engineer reviewing a stuck task.
 
 A less capable local model has failed verification ${attempts} time${
     attempts === 1 ? "" : "s"

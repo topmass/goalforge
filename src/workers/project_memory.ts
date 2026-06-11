@@ -29,13 +29,13 @@ export function buildMemoryFromBoard(board: BoardSnapshot): string {
     .map((task) => `- ${task.id}: ${oneLine(task.supervisorDecision, 220)}`)
     .join("\n") || "No supervisor decisions recorded.";
   const recentEvents = board.events.slice(-35).map(formatEventLine).join("\n") ||
-    "No recent GoalForge events.";
+    "No recent LoopForge events.";
   const goalProgress = summarizeGoalProgress(board);
   const closedGoals = summarizeClosedGoals(board, 5);
 
   return limitText(
     [
-      "GoalForge project memory is a compact view of the durable local board, not a user request.",
+      "LoopForge project memory is a compact view of the durable local board, not a user request.",
       "",
       "Project main thread:",
       board.projectState.mainThreadId
@@ -153,5 +153,5 @@ function limitText(value: string, maxCharacters: number): string {
     return value;
   }
   return value.slice(0, maxCharacters - 60).trimEnd() +
-    " [GoalForge compacted this memory text.]";
+    " [LoopForge compacted this memory text.]";
 }

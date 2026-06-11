@@ -131,7 +131,7 @@ export function isFailureSignal(kind: string, message: string): boolean {
 
 export function buildFailureSteerMessage(message: string): string {
   return [
-    "GoalForge live supervisor:",
+    "LoopForge live supervisor:",
     "Recent command output looks like a real failure.",
     "Pause broad implementation. Inspect the failing output, fix the smallest relevant cause, then rerun the exact failing command before final handoff.",
     `Signal: ${message.replace(/\s+/g, " ").trim().slice(0, 500)}`,

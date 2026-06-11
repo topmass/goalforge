@@ -8,18 +8,18 @@ import {
   CodexTurnInput,
   CodexTurnResult,
 } from "../src/workers/codex_app_server.ts";
-import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../src/workers/loopforge_worker.ts";
 import { buildRescuePrompt } from "../src/workers/rescue.ts";
 
 function withTempHome(fn: () => Promise<void>): Promise<void> {
   const home = Deno.makeTempDirSync();
-  const previous = Deno.env.get("GOALFORGE_HOME");
-  Deno.env.set("GOALFORGE_HOME", home);
+  const previous = Deno.env.get("LOOPFORGE_HOME");
+  Deno.env.set("LOOPFORGE_HOME", home);
   return fn().finally(() => {
     if (previous === undefined) {
-      Deno.env.delete("GOALFORGE_HOME");
+      Deno.env.delete("LOOPFORGE_HOME");
     } else {
-      Deno.env.set("GOALFORGE_HOME", previous);
+      Deno.env.set("LOOPFORGE_HOME", previous);
     }
     Deno.removeSync(home, { recursive: true });
   });
@@ -164,7 +164,7 @@ Deno.test("rescue model diagnoses a stuck task and the guidance unsticks the wor
     try {
       store.initProject();
       const { task } = store.createGoal("Fix the POST handler");
-      const worker = new GoalForgeWorker(root, store, {
+      const worker = new LoopForgeWorker(root, store, {
         onEvent: (event) => events.push(`${event.role}/${event.kind}`),
         createCodexClient: (onEvent) => new StuckUntilRescuedCodexClient(onEvent, seen),
         createRescueClient: (onEvent) => new RescueAdvisorCodexClient(onEvent, counters),
@@ -218,7 +218,7 @@ Deno.test("rescue stays quiet when disabled and prompt shape is diagnosis-only",
     try {
       store.initProject();
       const { task } = store.createGoal("Stuck without rescue");
-      const worker = new GoalForgeWorker(root, store, {
+      const worker = new LoopForgeWorker(root, store, {
         createCodexClient: (onEvent) => new StuckUntilRescuedCodexClient(onEvent, seen),
         createRescueClient: () => {
           throw new Error("Rescue must not be consulted when disabled.");

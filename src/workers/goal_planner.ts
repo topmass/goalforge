@@ -63,7 +63,7 @@ export class GoalPlanner {
       const workflow = readWorkflow(this.root);
       const projectInstructions = await collectAgentsInstructions(this.root);
       await codex.runTurn(session, {
-        title: "GoalForge goal compiler",
+        title: "LoopForge goal compiler",
         prompt: buildPlannerPrompt(
           goalText,
           this.projectMemory,
@@ -122,7 +122,7 @@ export function parsePlannerPlanResponse(responseText: string): GoalPlan {
         "- Implement the task.\n- Run relevant validation.",
       ),
       priority: numberField(record.priority, 100 - index),
-      workpad: stringField(record.workpad, "Created by GoalForge prompt compiler."),
+      workpad: stringField(record.workpad, "Created by LoopForge prompt compiler."),
       dependsOn: stringArrayField(record.dependsOn),
       riskLevel: riskField(record.riskLevel),
       verificationPlan: stringField(
@@ -173,9 +173,9 @@ function buildPlannerPrompt(
   workflowInstructions = "No WORKFLOW.md instructions were supplied.",
   projectInstructions = "No project instructions were supplied.",
 ): string {
-  return `You are the GoalForge prompt compiler for a local coding project.
+  return `You are the LoopForge prompt compiler for a local coding project.
 
-	Turn the user's rough feature request into a compact GoalForge task graph.
+	Turn the user's rough feature request into a compact LoopForge task graph.
 
 Rules:
 - Output only valid JSON. Do not wrap it in markdown.
@@ -207,7 +207,7 @@ Rules:
 - Keep each prompt scoped so one worker can complete it in an isolated git worktree.
 - If the goal is a repository-level publish operation (for example committing and pushing the
   current working tree or existing local commits to the remote), return exactly one task with
-  kind set to "ops" and opsAction set to "publish". GoalForge runs ops tasks itself at the
+  kind set to "ops" and opsAction set to "publish". LoopForge runs ops tasks itself at the
   repository root; no Codex worker or worktree is involved. Do not mark implementation work as ops.
 - Split broad goals into coherent implementation tasks that can run safely in parallel when independent.
 - Include relevant repo-inspection, implementation, and validation instructions in the prompt.
@@ -221,7 +221,7 @@ Rules:
 	Project VISION.md, project-specsheet.md, and AGENTS.md context:
 	${projectInstructions}
 
-	Current GoalForge board memory:
+	Current LoopForge board memory:
 ${projectMemory}
 
 User goal:
@@ -279,5 +279,5 @@ function limitText(value: string, maxCharacters: number): string {
     return value;
   }
   return value.slice(0, maxCharacters - 80).trimEnd() +
-    "\n\n[GoalForge truncated this compiled prompt to keep it under 4,000 characters.]";
+    "\n\n[LoopForge truncated this compiled prompt to keep it under 4,000 characters.]";
 }

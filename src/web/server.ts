@@ -21,12 +21,12 @@ import { GoalPursuer } from "../workers/goal_pursuer.ts";
 import { runScout } from "../workers/goal_scout.ts";
 import { runGoalProbes } from "../workers/goal_probes.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
-import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../workers/loopforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
 import { buildTaskCard, ensureProjectKnowledgeFiles } from "../workers/task_memory.ts";
 import { readWorkflow, setWorkflowMaxConcurrentAgents } from "../workflow/workflow.ts";
 
-export interface GoalForgeServer {
+export interface LoopForgeServer {
   url: string;
   shutdown: () => void;
   finished: Promise<void>;
@@ -34,7 +34,7 @@ export interface GoalForgeServer {
 
 type Client = ReadableStreamDefaultController<Uint8Array>;
 
-export interface GoalForgeServerOptions {
+export interface LoopForgeServerOptions {
   createCodexClient?: (
     onEvent: (
       event: ActivityEventInput,
@@ -52,8 +52,8 @@ const APP_ROOT = path.normalize(decodeURIComponent(new URL("../../", import.meta
 export function startServer(
   root = Deno.cwd(),
   port = 4733,
-  options: GoalForgeServerOptions = {},
-): GoalForgeServer {
+  options: LoopForgeServerOptions = {},
+): LoopForgeServer {
   const normalizedRoot = normalizeRoot(root);
   const store = new BoardStore(normalizedRoot);
   store.initProject();
@@ -95,7 +95,7 @@ export function startServer(
     }
     queueRunning = true;
     queueMicrotask(() => {
-      const worker = new GoalForgeWorker(normalizedRoot, store, {
+      const worker = new LoopForgeWorker(normalizedRoot, store, {
         onEvent: broadcastActivity,
         createCodexClient: options.createCodexClient,
       });
@@ -116,7 +116,7 @@ export function startServer(
       port,
       signal: abort.signal,
       onListen: ({ hostname, port }) => {
-        console.log(`GoalForge listening at http://${hostname}:${port}`);
+        console.log(`LoopForge listening at http://${hostname}:${port}`);
       },
     },
     async (request) => {
@@ -230,7 +230,7 @@ export function startServer(
 
         if (url.pathname === "/api/main/ensure" && request.method === "POST") {
           ensureProjectKnowledgeFiles(normalizedRoot);
-          const worker = new GoalForgeWorker(normalizedRoot, store, {
+          const worker = new LoopForgeWorker(normalizedRoot, store, {
             onEvent: broadcastActivity,
             createCodexClient: options.createCodexClient,
           });
@@ -252,7 +252,7 @@ export function startServer(
         }
 
         if (url.pathname === "/api/main/compact" && request.method === "POST") {
-          const worker = new GoalForgeWorker(normalizedRoot, store, {
+          const worker = new LoopForgeWorker(normalizedRoot, store, {
             onEvent: broadcastActivity,
             createCodexClient: options.createCodexClient,
           });
@@ -612,7 +612,7 @@ export function startServer(
 
         if (url.pathname === "/api/run" && request.method === "POST") {
           queueMicrotask(() => {
-            const worker = new GoalForgeWorker(normalizedRoot, store, {
+            const worker = new LoopForgeWorker(normalizedRoot, store, {
               onEvent: broadcastActivity,
               createCodexClient: options.createCodexClient,
             });
@@ -664,7 +664,7 @@ export function startServer(
         if (runMatch && request.method === "POST") {
           const taskId = decodeURIComponent(runMatch[1]);
           queueMicrotask(() => {
-            const worker = new GoalForgeWorker(normalizedRoot, store, {
+            const worker = new LoopForgeWorker(normalizedRoot, store, {
               onEvent: broadcastActivity,
               createCodexClient: options.createCodexClient,
             });
@@ -679,7 +679,7 @@ export function startServer(
         const stopMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/stop$/);
         if (stopMatch && request.method === "POST") {
           const taskId = decodeURIComponent(stopMatch[1]);
-          const event = store.requestTaskStop(taskId, "Stop requested from the GoalForge TUI.");
+          const event = store.requestTaskStop(taskId, "Stop requested from the LoopForge TUI.");
           broadcastActivity(event);
           return json({ ok: true, taskId, event });
         }
@@ -727,7 +727,7 @@ export function startServer(
           if (!message) {
             return json({ error: "message is required" }, 400);
           }
-          const worker = new GoalForgeWorker(normalizedRoot, store, {
+          const worker = new LoopForgeWorker(normalizedRoot, store, {
             onEvent: broadcastActivity,
             createCodexClient: options.createCodexClient,
           });
@@ -748,7 +748,7 @@ export function startServer(
         const threadMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/thread$/);
         if (threadMatch && request.method === "GET") {
           const taskId = decodeURIComponent(threadMatch[1]);
-          const worker = new GoalForgeWorker(normalizedRoot, store, {
+          const worker = new LoopForgeWorker(normalizedRoot, store, {
             onEvent: broadcastActivity,
             createCodexClient: options.createCodexClient,
           });
@@ -759,7 +759,7 @@ export function startServer(
         const compactTaskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/compact-thread$/);
         if (compactTaskMatch && request.method === "POST") {
           const taskId = decodeURIComponent(compactTaskMatch[1]);
-          const worker = new GoalForgeWorker(normalizedRoot, store, {
+          const worker = new LoopForgeWorker(normalizedRoot, store, {
             onEvent: broadcastActivity,
             createCodexClient: options.createCodexClient,
           });
@@ -819,7 +819,7 @@ export function startServer(
               const reviewText = [
                 latest.validation,
                 "",
-                `GoalForge review: ${result.verdict.toUpperCase()}`,
+                `LoopForge review: ${result.verdict.toUpperCase()}`,
                 result.notes,
               ].filter(Boolean).join("\n");
               store.updateTaskValidation(task.id, reviewText);
@@ -851,7 +851,7 @@ export function startServer(
                     task.id,
                     "blocked",
                     "merger",
-                    "GoalForge cannot merge because this task has no assigned branch.",
+                    "LoopForge cannot merge because this task has no assigned branch.",
                   ).event,
                 );
                 return;
@@ -891,7 +891,7 @@ export function startServer(
                     taskId,
                     "blocked",
                     "reviewer",
-                    `GoalForge needs input: ${message}`,
+                    `LoopForge needs input: ${message}`,
                   ).event,
                 );
               } catch {

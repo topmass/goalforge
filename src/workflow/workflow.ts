@@ -17,7 +17,7 @@ export interface WorkflowAuthority {
 
 export interface WorkflowRuntime {
   version: number;
-  trackerKind: "goalforge-local";
+  trackerKind: "loopforge-local";
   maxConcurrentAgents: number;
   maxTurns: number;
   maxRetries: number;
@@ -56,18 +56,18 @@ export function ensureWorkflow(root: string): void {
 
 // Managed context block synced into the project's AGENTS.md (created if missing) and
 // CLAUDE.md (only when the file already exists), so any harness that auto-loads those
-// files learns it may be running inside GoalForge's pseudo-autonomous loop. Content
-// between the markers is owned by GoalForge and refreshed on init.
-const AGENT_CONTEXT_BEGIN = "<!-- goalforge:autonomy:begin -->";
-const AGENT_CONTEXT_END = "<!-- goalforge:autonomy:end -->";
+// files learns it may be running inside LoopForge's pseudo-autonomous loop. Content
+// between the markers is owned by LoopForge and refreshed on init.
+const AGENT_CONTEXT_BEGIN = "<!-- loopforge:autonomy:begin -->";
+const AGENT_CONTEXT_END = "<!-- loopforge:autonomy:end -->";
 
 export function agentContextBlock(): string {
   return `${AGENT_CONTEXT_BEGIN}
-<!-- Managed by GoalForge; edits inside this block are overwritten. -->
-## GoalForge
+<!-- Managed by LoopForge; edits inside this block are overwritten. -->
+## LoopForge
 
-This project is operated by GoalForge, a local agent-orchestration system (see WORKFLOW.md).
-If your session was started by GoalForge (you are working inside a \`.goalforge/worktrees\`
+This project is operated by LoopForge, a local agent-orchestration system (see WORKFLOW.md).
+If your session was started by LoopForge (you are working inside a \`.loopforge/worktrees\`
 checkout), you are one worker in a pseudo-autonomous loop that may run unattended for hours:
 
 - Stopping for user input is the last resort: only missing credentials, third-party access,
@@ -77,8 +77,8 @@ checkout), you are one worker in a pseudo-autonomous loop that may run unattende
   "tested" means the strongest verification available inside the repository. Criteria that
   need the running app or manual QA go in your handoff as
   "needs manual verification: <what and how>" instead of stopping work.
-- The GoalForge daemon owns commits, board state, reviews, and merges. Do not commit or edit
-  \`.goalforge/\` state yourself.
+- The LoopForge daemon owns commits, board state, reviews, and merges. Do not commit or edit
+  \`.loopforge/\` state yourself.
 ${AGENT_CONTEXT_END}`;
 }
 
@@ -133,7 +133,7 @@ export function parseWorkflow(source: string): WorkflowRuntime {
 
   return {
     version: numberValue(data.version, 1),
-    trackerKind: tracker.kind === "goalforge-local" ? "goalforge-local" : "goalforge-local",
+    trackerKind: tracker.kind === "loopforge-local" ? "loopforge-local" : "loopforge-local",
     maxConcurrentAgents: positiveInt(agent.max_concurrent_agents, 2),
     maxTurns: positiveInt(agent.max_turns, 3),
     maxRetries: positiveInt(agent.max_retries, 1),
@@ -142,7 +142,7 @@ export function parseWorkflow(source: string): WorkflowRuntime {
     reasoningEffort: reasoningValue(codex.reasoning_effort, "high"),
     fastMode: booleanValue(codex.fast_mode, true),
     githubPrReview: booleanValue(github.pr_review, false),
-    worktreesDir: stringValue(workspace.worktrees_dir, ".goalforge/worktrees"),
+    worktreesDir: stringValue(workspace.worktrees_dir, ".loopforge/worktrees"),
     hooks: normalizeHooks(hooks),
     authority: {
       publish: booleanValue(authority.publish, true),
@@ -181,7 +181,7 @@ export function defaultWorkflow(): string {
   return `---
 version: 1
 tracker:
-  kind: goalforge-local
+  kind: loopforge-local
 agent:
   max_concurrent_agents: 2
 	  max_turns: 3
@@ -197,7 +197,7 @@ authority:
   publish: true
   max_triage_retries: 2
 workspace:
-  worktrees_dir: .goalforge/worktrees
+  worktrees_dir: .loopforge/worktrees
   hooks:
     after_create: []
     before_run: []
@@ -209,9 +209,9 @@ ${defaultInstructions()}
 }
 
 function defaultInstructions(): string {
-  return `# GoalForge Workflow
+  return `# LoopForge Workflow
 
-GoalForge is a local Codex orchestration layer backed by this repository's Kanban board.
+LoopForge is a local Codex orchestration layer backed by this repository's Kanban board.
 Use this file as the repo-owned contract for how agents should plan, implement, test, review,
 and merge work.
 
@@ -220,14 +220,14 @@ and merge work.
 - Ready is dispatchable work.
 - Started is work currently owned by a Codex worker.
 - Review means implementation and validation evidence exist.
-- Merging means review approved and GoalForge is applying the local merge or PR gate.
+- Merging means review approved and LoopForge is applying the local merge or PR gate.
 - Inbox also holds work that needs user direction or a resolved blocker.
-- Done means the reviewer approved the work and GoalForge merged it.
+- Done means the reviewer approved the work and LoopForge merged it.
 
 ## Loop Contract
 Every task moves through a durable loop:
 Queued -> Planning -> Working -> Testing -> Repairing -> Reviewing -> Remembering -> Done.
-Blocked means GoalForge has a concrete blocker or user decision to show in the TUI.
+Blocked means LoopForge has a concrete blocker or user decision to show in the TUI.
 Each phase should preserve the current gate, next action, verification summary, and any needed input.
 
 ## Workpad Contract
@@ -243,9 +243,9 @@ Every worker handoff should preserve:
 	- Keep edits scoped to the task acceptance criteria.
 	- Follow the task verification plan and any discovered verification gates.
 	- Use subagents only for independent investigation, verification, or implementation slices.
-- Do not mutate .goalforge runtime state directly.
-- Do not create commits; GoalForge records commits, reviews, and merges.
-- GoalForge runs pseudo-autonomously: the user may be away for hours. Stopping for input is
+- Do not mutate .loopforge runtime state directly.
+- Do not create commits; LoopForge records commits, reviews, and merges.
+- LoopForge runs pseudo-autonomously: the user may be away for hours. Stopping for input is
   the last resort, reserved for credentials, third-party access, destructive approval, or a
   scope-changing product decision. Anything else: decide, note it in the handoff, keep going.
 - Criteria that need the running app or manual QA never block: verify what is checkable in
@@ -254,9 +254,9 @@ Every worker handoff should preserve:
 
 ## Authority Contract
 - Repo-level operations such as committing the root working tree and pushing to the remote are
-  GoalForge harness actions, never agent actions. The authority frontmatter controls them:
+  LoopForge harness actions, never agent actions. The authority frontmatter controls them:
   publish allows the harness publish action, max_triage_retries bounds triage-driven retries.
-- When a worker blocks with a concrete question, the GoalForge main agent triages it first:
+- When a worker blocks with a concrete question, the LoopForge main agent triages it first:
   resolve it with an allowed harness action, retry the worker once with corrected instructions,
   or escalate to the user with one clear ask.
 - Hard external blockers (missing credentials, third-party accounts, user-only decisions) always

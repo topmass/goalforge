@@ -7,7 +7,7 @@ import {
 } from "../src/board/status_lines.ts";
 
 Deno.test("status lines include active goal verdict and task counts", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -27,7 +27,7 @@ Deno.test("status lines include active goal verdict and task counts", () => {
 });
 
 Deno.test("status lines include recent closed goals", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -47,7 +47,7 @@ Deno.test("status lines include recent closed goals", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -68,7 +68,7 @@ Deno.test("status lines include recent closed goals", () => {
 });
 
 Deno.test("goal lines list open and closed goal details", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -88,7 +88,7 @@ Deno.test("goal lines list open and closed goal details", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -113,7 +113,7 @@ Deno.test("goal lines list open and closed goal details", () => {
 });
 
 Deno.test("health lines summarize project readiness and next action", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -133,7 +133,7 @@ Deno.test("health lines summarize project readiness and next action", () => {
 });
 
 Deno.test("health lines name the main ensure remediation when memory is missing", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -145,7 +145,7 @@ Deno.test("health lines name the main ensure remediation when memory is missing"
     assertStringIncludes(text, "Main memory: not started");
     assertStringIncludes(
       text,
-      "Next: Open the TUI or run `goalforge main ensure` to create project memory.",
+      "Next: Open the TUI or run `loopforge main ensure` to create project memory.",
     );
   } finally {
     store.close();
@@ -154,7 +154,7 @@ Deno.test("health lines name the main ensure remediation when memory is missing"
 });
 
 Deno.test("health lines recommend evidence repair before done cleanup", () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-status-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-status-" });
   const store = new BoardStore(root);
   try {
     store.initProject();

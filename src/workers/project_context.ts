@@ -2,6 +2,7 @@ import path from "node:path";
 
 const SKIP_DIRS = new Set([
   ".git",
+  ".loopforge",
   ".goalforge",
   ".omx",
   "node_modules",
@@ -25,7 +26,7 @@ export async function collectAgentsInstructions(root: string): Promise<string> {
     sections.push(`## ${file}\n${content.trim()}`);
   }
   if (!sections.length) {
-    return "No VISION.md, project-specsheet.md, or AGENTS.md files were found outside GoalForge runtime folders.";
+    return "No VISION.md, project-specsheet.md, or AGENTS.md files were found outside LoopForge runtime folders.";
   }
   return limitText(sections.join("\n\n"), 12000);
 }
@@ -51,7 +52,7 @@ function limitText(value: string, maxCharacters: number): string {
     return value;
   }
   return value.slice(0, maxCharacters - 80).trimEnd() +
-    "\n\n[GoalForge truncated AGENTS.md context to keep prompts bounded.]";
+    "\n\n[LoopForge truncated AGENTS.md context to keep prompts bounded.]";
 }
 
 async function safeRead(target: string): Promise<string> {

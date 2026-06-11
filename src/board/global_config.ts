@@ -1,7 +1,7 @@
-// Machine-level GoalForge settings shared by every project: which agent
+// Machine-level LoopForge settings shared by every project: which agent
 // backend runs workers, and how to reach local/self-hosted models.
-// Stored at ~/.goalforge/config.json (override the directory with
-// GOALFORGE_HOME, mainly for tests).
+// Stored at ~/.loopforge/config.json (override the directory with
+// LOOPFORGE_HOME, mainly for tests).
 
 import path from "node:path";
 
@@ -52,17 +52,29 @@ export interface GlobalConfigPatch {
   search?: Partial<GlobalConfig["search"]>;
 }
 
-export function goalforgeHome(): string {
-  const override = Deno.env.get("GOALFORGE_HOME");
+export function loopforgeHome(): string {
+  // GOALFORGE_HOME and ~/.goalforge are honored for installs from before the
+  // LoopForge rename.
+  const override = Deno.env.get("LOOPFORGE_HOME") ?? Deno.env.get("GOALFORGE_HOME");
   if (override?.trim()) {
     return override.trim();
   }
   const home = Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE") ?? ".";
-  return path.join(home, ".goalforge");
+  const next = path.join(home, ".loopforge");
+  const legacy = path.join(home, ".goalforge");
+  return dirExists(next) || !dirExists(legacy) ? next : legacy;
+}
+
+function dirExists(target: string): boolean {
+  try {
+    return Deno.statSync(target).isDirectory;
+  } catch {
+    return false;
+  }
 }
 
 export function globalConfigPath(): string {
-  return path.join(goalforgeHome(), "config.json");
+  return path.join(loopforgeHome(), "config.json");
 }
 
 export function defaultGlobalConfig(): GlobalConfig {
@@ -158,7 +170,7 @@ export function updateGlobalConfig(patch: GlobalConfigPatch): GlobalConfig {
     scout: { ...current.scout, ...patch.scout },
     search: { ...current.search, ...patch.search },
   };
-  Deno.mkdirSync(goalforgeHome(), { recursive: true });
+  Deno.mkdirSync(loopforgeHome(), { recursive: true });
   Deno.writeTextFileSync(globalConfigPath(), `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }

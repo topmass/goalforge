@@ -12,7 +12,7 @@ Deno.test("project memory summarizes board state, validation, and recent events"
     store.appendEvent(task.id, null, "worker", "handoff", "Changed src/example.ts");
 
     const memory = buildProjectMemory(store);
-    assertStringIncludes(memory, "GoalForge project memory");
+    assertStringIncludes(memory, "LoopForge project memory");
     assertStringIncludes(memory, "Current goal:");
     assertStringIncludes(memory, "GOAL-1 Ready 0/1 done");
     assertStringIncludes(memory, "Evidence: 0 missing validation, 0 missing approved review");
@@ -50,7 +50,7 @@ Deno.test("project memory keeps recently closed goals", () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");

@@ -58,7 +58,7 @@ export class GoalScheduler {
       const session = await codex.startSession(this.root);
       const workflow = readWorkflow(this.root);
       await codex.runTurn(session, {
-        title: "GoalForge scheduler",
+        title: "LoopForge scheduler",
         prompt: buildSchedulerPrompt(
           tasks,
           maxConcurrency,
@@ -116,7 +116,7 @@ function buildSchedulerPrompt(
     workpad: task.workpad,
   }));
 
-  return `You are the GoalForge scheduler for a local coding project.
+  return `You are the LoopForge scheduler for a local coding project.
 
 Choose which ready tasks can safely run in parallel right now.
 
@@ -131,7 +131,7 @@ Rules:
 Repo WORKFLOW.md instructions:
 ${workflowInstructions}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${projectMemory}
 
 Dispatchable tasks:

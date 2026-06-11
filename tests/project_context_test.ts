@@ -9,8 +9,8 @@ Deno.test("project context collects AGENTS outside runtime folders", async () =>
     await Deno.writeTextFile(`${root}/project-specsheet.md`, "current feature facts");
     await Deno.mkdir(`${root}/feature`, { recursive: true });
     await Deno.writeTextFile(`${root}/feature/AGENTS.md`, "feature instruction");
-    await Deno.mkdir(`${root}/.goalforge`, { recursive: true });
-    await Deno.writeTextFile(`${root}/.goalforge/AGENTS.md`, "runtime instruction");
+    await Deno.mkdir(`${root}/.loopforge`, { recursive: true });
+    await Deno.writeTextFile(`${root}/.loopforge/AGENTS.md`, "runtime instruction");
 
     const instructions = await collectAgentsInstructions(root);
     assertStringIncludes(instructions, "build a great local agent OS");

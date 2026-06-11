@@ -73,7 +73,7 @@ export async function runScout(
     const session = await codex.startSession(root);
     const projectInstructions = await collectAgentsInstructions(root);
     await codex.runTurn(session, {
-      title: "GoalForge scout",
+      title: "LoopForge scout",
       prompt: buildScoutPrompt({
         projectMemory: buildProjectMemory(store),
         projectInstructions,
@@ -165,9 +165,9 @@ idea truly needs current information. Try:
   curl -s 'https://lite.duckduckgo.com/lite/?q=YOUR+QUERY'
 and read the result links and snippets from the HTML. Keep it to a couple of queries;
 if results are blocked or unreadable, propose ideas from the project context alone.
-(For reliable JSON search results the user can run: goalforge --search <searxng-url>)`;
+(For reliable JSON search results the user can run: loopforge --search <searxng-url>)`;
 
-  return `You are the GoalForge scout. Study this project and propose what to build next.
+  return `You are the LoopForge scout. Study this project and propose what to build next.
 
 You never implement anything. You pitch ideas to the human gatekeeper, who approves
 or rejects each one. Approved ideas get compiled into goals by the planner.
@@ -193,7 +193,7 @@ ${searchBlock}
 Project context (VISION, specsheet, AGENTS):
 ${input.projectInstructions}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${input.projectMemory}
 
 Pending ideas awaiting review (re-rank these in "order"):

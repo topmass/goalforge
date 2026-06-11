@@ -52,12 +52,12 @@ class DogfoodCodexClient implements CodexClient {
 
   async runTurn(session: CodexSession, input: CodexTurnInput): Promise<CodexTurnResult> {
     console.log(`DOGFOOD_CODEX turn ${input.title}`);
-    if (input.title === "GoalForge main thread seed") {
+    if (input.title === "LoopForge main thread seed") {
       this.emit("agent", "Dogfood main thread seeded.");
       return this.completed(session, "turn-main-seed");
     }
 
-    if (input.title === "GoalForge goal compiler") {
+    if (input.title === "LoopForge goal compiler") {
       this.emit(
         "agent",
         JSON.stringify({
@@ -170,9 +170,9 @@ async function git(cwd: string, args: string[]): Promise<void> {
   const output = await new Deno.Command("git", {
     args: [
       "-c",
-      "user.email=goalforge-smoke@example.com",
+      "user.email=loopforge-smoke@example.com",
       "-c",
-      "user.name=GoalForge Smoke",
+      "user.name=LoopForge Smoke",
       ...args,
     ],
     cwd,

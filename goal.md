@@ -1,14 +1,14 @@
-Build the first working MVP of GoalForge in /home/matthew/Code/goalforge.
+Build the first working MVP of LoopForge in /home/matthew/Code/loopforge.
 
-GoalForge is a CLI-first local Codex orchestration tool. It combines the strongest parts of OpenAI
+LoopForge is a CLI-first local Codex orchestration tool. It combines the strongest parts of OpenAI
 Symphony and Uncle Bob's SwarmForge: a local kanban board for goals/tasks, Codex App Server workers,
 git worktree isolation, structured role prompts, strong verification gates, and live terminal-style
 agent activity in the GUI.
 
 Current repo state:
 
-- Path: /home/matthew/Code/goalforge
-- GitHub: https://github.com/topmass/goalforge
+- Path: /home/matthew/Code/loopforge
+- GitHub: https://github.com/topmass/loopforge
 - Visibility: private
 - Branch: main
 - Repo is intentionally empty except for git.
@@ -16,12 +16,12 @@ Current repo state:
 Core product requirements:
 
 1. Use Deno 2 + TypeScript for the local daemon/CLI unless inspection shows a serious blocker.
-2. Build a local-first app with SQLite-backed state under .goalforge/.
-3. Provide a CLI named goalforge with at least:
-   - goalforge init
-   - goalforge goal "<goal text>"
-   - goalforge board or goalforge serve
-   - goalforge run
+2. Build a local-first app with SQLite-backed state under .loopforge/.
+3. Provide a CLI named loopforge with at least:
+   - loopforge init
+   - loopforge goal "<goal text>"
+   - loopforge board or loopforge serve
+   - loopforge run
 4. Build a local web GUI with:
    - interactive kanban board
    - task detail/workpad panel
@@ -55,7 +55,7 @@ Core product requirements:
 
 13. Add state-transition validation so agents can request transitions but the daemon arbitrates
     them.
-14. Adapt Symphony's workflow prompt ideas into GoalForge's local-board model:
+14. Adapt Symphony's workflow prompt ideas into LoopForge's local-board model:
 
 - persistent task workpad
 - status routing
@@ -80,18 +80,18 @@ Core product requirements:
 
 Suggested first vertical slice:
 
-- goalforge init creates .goalforge/, SQLite DB, config, prompt templates, and required ignored
+- loopforge init creates .loopforge/, SQLite DB, config, prompt templates, and required ignored
   runtime folders. If the folder is not yet a git repository, it bootstraps one and creates a
   baseline commit so worktrees can see the project.
-- goalforge goal uses Codex to compile the user's rough request into one worker prompt and creates
+- loopforge goal uses Codex to compile the user's rough request into one worker prompt and creates
   an initial task on the board.
-- goalforge serve starts the daemon and GUI.
+- loopforge serve starts the daemon and GUI.
 - GUI displays the kanban board and command center.
-- goalforge run or a GUI button starts a real Codex worker that streams activity into the command
+- loopforge run or a GUI button starts a real Codex worker that streams activity into the command
   center and moves a task through Started -> Review.
-- goalforge run or the GUI Start GoalForge action asks the scheduler which queued goals can run
+- loopforge run or the GUI Start LoopForge action asks the scheduler which queued goals can run
   together and processes a safe batch.
-- goalforge review or the GUI Review action starts a Codex reviewer and appends review evidence to
+- loopforge review or the GUI Review action starts a Codex reviewer and appends review evidence to
   the task before merge.
 - Codex App Server client exists behind an interface and is the default production worker path.
 - Tests may use injected controlled Codex clients only to avoid spending turns during automated

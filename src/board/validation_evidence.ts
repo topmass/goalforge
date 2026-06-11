@@ -36,7 +36,7 @@ export function parseValidationEvidence(validation: string): ValidationEvidence 
     ...verificationLines.slice(1).filter((line) => line.replace(/^[-*]\s*/, "").trim().length >= 8),
   ];
   const commit = lineValue(validation, "Commit");
-  const reviewVerdict = lineValue(validation, "GoalForge review");
+  const reviewVerdict = lineValue(validation, "LoopForge review");
   const finalGitStatus = sectionFirstLine(validation, "Git status");
   const commitCreated = Boolean(commit && !/not created|failed/i.test(commit));
   const reviewApproved = reviewVerdict ? /^approved$/i.test(reviewVerdict.trim()) : false;
@@ -144,7 +144,7 @@ function sectionLines(text: string, label: string): string[] {
 }
 
 function isValidationSectionBoundary(line: string): boolean {
-  return /^(Turn|Turn status|Test turn|Test turn status|Discovered verification gates|Verification verdict|Commit|Pre-commit git status|Pre-commit diff stat|Git status|Diff stat|GoalForge review):/i
+  return /^(Turn|Turn status|Test turn|Test turn status|Discovered verification gates|Verification verdict|Commit|Pre-commit git status|Pre-commit diff stat|Git status|Diff stat|LoopForge review):/i
     .test(line);
 }
 

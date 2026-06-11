@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { parseValidationEvidence } from "../src/board/validation_evidence.ts";
 
-Deno.test("validation evidence parser extracts successful GoalForge task proof", () => {
+Deno.test("validation evidence parser extracts successful LoopForge task proof", () => {
   const evidence = parseValidationEvidence([
     "Codex App Server turn completed.",
     "Turn: turn-1",
@@ -18,7 +18,7 @@ Deno.test("validation evidence parser extracts successful GoalForge task proof",
     "Git status:",
     "clean",
     "",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
 
   assertEquals(evidence.implementationCompleted, true);
@@ -50,7 +50,7 @@ Deno.test("validation evidence parser rejects bare verification pass", () => {
     "Commit: abc123",
     "Git status:",
     "clean",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
 
   assertEquals(evidence.verificationPassed, true);
@@ -71,7 +71,7 @@ Deno.test("validation evidence parser accepts pass token followed by same-line p
     "Commit: abc123",
     "Git status:",
     "clean",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
 
   assertEquals(evidence.verificationPassed, true);
@@ -91,7 +91,7 @@ Deno.test("validation evidence parser counts same-line pass prose as proof", () 
     "Commit: abc123",
     "Git status:",
     "clean",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
 
   assertEquals(evidence.verificationPassed, true);
@@ -102,7 +102,7 @@ Deno.test("validation evidence parser counts same-line pass prose as proof", () 
 
 Deno.test("validation evidence parser reports missing completion proof", () => {
   const evidence = parseValidationEvidence(
-    "GoalForge review: CHANGES_REQUESTED\nCommit: not created",
+    "LoopForge review: CHANGES_REQUESTED\nCommit: not created",
   );
 
   assertEquals(evidence.implementationCompleted, false);
@@ -133,7 +133,7 @@ Deno.test("evidence accepts commit not needed for evidence-only tasks", () => {
     "Commit: not needed (no file changes)",
     "Git status:",
     "clean",
-    "GoalForge review: APPROVED",
+    "LoopForge review: APPROVED",
   ].join("\n"));
   assertEquals(evidence.commitCreated, true);
   assertEquals(evidence.gaps, []);

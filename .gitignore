@@ -1,8 +1,10 @@
+.loopforge/
 .goalforge/
 .deno/
 node_modules/
 coverage/
 
+/.loopforge/
 /.goalforge/
 /.omx/
-goalforge-architecture-infographic.html
+loopforge-architecture-infographic.html

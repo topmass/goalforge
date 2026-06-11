@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+if command -v mise >/dev/null 2>&1; then
+  exec mise x deno@2 -- deno run --allow-read --allow-write --allow-run --allow-net --allow-env "$SCRIPT_DIR/src/cli.ts" "$@"
+fi
+if command -v deno >/dev/null 2>&1; then
+  exec deno run --allow-read --allow-write --allow-run --allow-net --allow-env "$SCRIPT_DIR/src/cli.ts" "$@"
+fi
+if [ -x "$HOME/.deno/bin/deno" ]; then
+  exec "$HOME/.deno/bin/deno" run --allow-read --allow-write --allow-run --allow-net --allow-env "$SCRIPT_DIR/src/cli.ts" "$@"
+fi
+echo "loopforge: install mise or deno to run the CLI." >&2
+exit 127

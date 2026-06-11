@@ -28,7 +28,7 @@ export function taskRecommendation(
         heading: "Recommended Action",
         summary: "Guidance is queued for this task.",
         action:
-          "GoalForge will restart it with that guidance. Wait for the task to move to Working.",
+          "LoopForge will restart it with that guidance. Wait for the task to move to Working.",
       };
     }
     return {
@@ -40,7 +40,7 @@ export function taskRecommendation(
   if (task.status === "in_progress") {
     return {
       heading: "Recommended Action",
-      summary: "GoalForge is actively working this task.",
+      summary: "LoopForge is actively working this task.",
       action: "Watch Active Agents. Use Stop Task only if the run is stuck or going the wrong way.",
     };
   }
@@ -53,7 +53,7 @@ export function taskRecommendation(
         heading: "Recommended Action",
         summary: `Validation evidence is incomplete: ${gaps[0]}.`,
         action:
-          "Do not review or merge yet. Restart the task or add input so GoalForge can repair the evidence.",
+          "Do not review or merge yet. Restart the task or add input so LoopForge can repair the evidence.",
       };
     }
     return {
@@ -66,7 +66,7 @@ export function taskRecommendation(
   if (task.status === "merging") {
     return {
       heading: "Recommended Action",
-      summary: "Review approved. GoalForge is merging this task.",
+      summary: "Review approved. LoopForge is merging this task.",
       action: "No action needed. The task moves to Done when the merge completes.",
     };
   }
@@ -98,7 +98,7 @@ export function taskRecommendation(
     heading: "Recommended Action",
     summary: task.nextAction || "This task is ready to start.",
     action:
-      "Click Start Task to run this task, or Run Ready Tasks to let GoalForge continue the queue.",
+      "Click Start Task to run this task, or Run Ready Tasks to let LoopForge continue the queue.",
   };
 }
 
@@ -106,19 +106,19 @@ export function blockedExplanation(reason: string | null): { summary: string; ac
   const text = extractErrorMessage(reason);
   if (text.includes("no rollout found for thread id") || text.includes("thread not found")) {
     return {
-      summary: "GoalForge could not reopen a saved Codex session for this task.",
+      summary: "LoopForge could not reopen a saved Codex session for this task.",
       action: "Click Start Task to retry with a fresh Codex session. No project input is needed.",
     };
   }
   if (!text) {
     return {
-      summary: "GoalForge needs direction before this task can continue.",
-      action: "Use Reply to send guidance. GoalForge will restart the task.",
+      summary: "LoopForge needs direction before this task can continue.",
+      action: "Use Reply to send guidance. LoopForge will restart the task.",
     };
   }
   return {
-    summary: text.replace(/^GoalForge needs input:\s*/i, ""),
-    action: "Use Reply to send guidance. GoalForge will restart the task.",
+    summary: text.replace(/^LoopForge needs input:\s*/i, ""),
+    action: "Use Reply to send guidance. LoopForge will restart the task.",
   };
 }
 

@@ -66,7 +66,7 @@ export function summarizeGoalProgress(
       .map((probe) =>
         probe.lastStatus === "failed"
           ? `Win condition failing: ${probe.label}.`
-          : `Win condition not yet checked: ${probe.label}. Run goalforge check.`
+          : `Win condition not yet checked: ${probe.label}. Run loopforge check.`
       )
     : [];
   // Executable probes supersede prose contract token-matching when present.
@@ -298,7 +298,7 @@ function isGeneratedContractBoilerplate(line: string): boolean {
     normalized.includes("planned task") && normalized.includes("done") ||
     normalized.includes("every done task") && normalized.includes("validation") ||
     normalized.includes("project memory") && normalized.includes("remaining risk") ||
-    normalized.includes("goalforge may close") ||
+    normalized.includes("loopforge may close") ||
     normalized.includes("complete every planned task") ||
     normalized.includes("validate, review, commit") && normalized.includes("handoff evidence");
 }

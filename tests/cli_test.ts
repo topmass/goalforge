@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { BoardStore } from "../src/board/store.ts";
 
 Deno.test("CLI close-goal closes the active proven goal", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -22,7 +22,7 @@ Deno.test("CLI close-goal closes the active proven goal", async () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -69,7 +69,7 @@ Deno.test("CLI close-goal closes the active proven goal", async () => {
 });
 
 Deno.test("CLI goals lists open and closed goals", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -89,7 +89,7 @@ Deno.test("CLI goals lists open and closed goals", async () => {
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -131,7 +131,7 @@ Deno.test("CLI goals lists open and closed goals", async () => {
 });
 
 Deno.test("CLI health prints project readiness", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -170,7 +170,7 @@ Deno.test("CLI health prints project readiness", async () => {
 });
 
 Deno.test("CLI help documents main ensure", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   try {
     const output = await new Deno.Command(Deno.execPath(), {
       args: [
@@ -189,17 +189,17 @@ Deno.test("CLI help documents main ensure", async () => {
 
     assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
     const stdout = new TextDecoder().decode(output.stdout);
-    assertStringIncludes(stdout, 'goalforge build "<goal text>"');
-    assertStringIncludes(stdout, "goalforge main status|ensure|reset|absorb");
-    assertStringIncludes(stdout, "goalforge dogfood [--live] [--keep]");
-    assertStringIncludes(stdout, "goalforge doctor");
+    assertStringIncludes(stdout, 'loopforge build "<goal text>"');
+    assertStringIncludes(stdout, "loopforge main status|ensure|reset|absorb");
+    assertStringIncludes(stdout, "loopforge dogfood [--live] [--keep]");
+    assertStringIncludes(stdout, "loopforge doctor");
   } finally {
     Deno.removeSync(root, { recursive: true });
   }
 });
 
 Deno.test("CLI main status includes project health guidance", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -228,7 +228,7 @@ Deno.test("CLI main status includes project health guidance", async () => {
     assertStringIncludes(stdout, "Project health: Needs Project Memory");
     assertStringIncludes(
       stdout,
-      "Next: Open the TUI or run `goalforge main ensure` to create project memory.",
+      "Next: Open the TUI or run `loopforge main ensure` to create project memory.",
     );
   } finally {
     try {
@@ -241,7 +241,7 @@ Deno.test("CLI main status includes project health guidance", async () => {
 });
 
 Deno.test("CLI doctor reports local prerequisites", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-" });
   try {
     const output = await new Deno.Command(Deno.execPath(), {
       args: [
@@ -272,8 +272,8 @@ Deno.test("CLI doctor reports local prerequisites", async () => {
 });
 
 Deno.test("CLI backend flags persist to the global config and warn for claude", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-cli-backend-" });
-  const home = Deno.makeTempDirSync({ prefix: "goalforge-home-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-cli-backend-" });
+  const home = Deno.makeTempDirSync({ prefix: "loopforge-home-" });
   const run = (...flags: string[]) =>
     new Deno.Command(Deno.execPath(), {
       args: [
@@ -288,7 +288,7 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
         "help",
       ],
       cwd: root,
-      env: { GOALFORGE_HOME: home },
+      env: { LOOPFORGE_HOME: home },
       stdout: "piped",
       stderr: "piped",
     }).output();
@@ -323,7 +323,7 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
     assertEquals(planner.code, 0, new TextDecoder().decode(planner.stderr));
     assertStringIncludes(
       new TextDecoder().decode(planner.stderr),
-      "GoalForge planner model: claude",
+      "LoopForge planner model: claude",
     );
     const routed = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
     assertEquals(routed.planner, { enabled: true, backend: "claude" });
@@ -338,7 +338,7 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
     const scout = await run("--scout", "local", "--search", "http://127.0.0.1:8888");
     assertEquals(scout.code, 0, new TextDecoder().decode(scout.stderr));
     const scoutNotice = new TextDecoder().decode(scout.stderr);
-    assertStringIncludes(scoutNotice, "GoalForge scout: local");
+    assertStringIncludes(scoutNotice, "LoopForge scout: local");
     assertStringIncludes(scoutNotice, "web search endpoint: http://127.0.0.1:8888");
     const scouted = JSON.parse(await Deno.readTextFile(`${home}/config.json`));
     assertEquals(scouted.scout, { enabled: true, backend: "local" });
@@ -356,9 +356,9 @@ Deno.test("CLI backend flags persist to the global config and warn for claude", 
 });
 
 Deno.test("CLI -C targets another project directory", async () => {
-  const project = Deno.makeTempDirSync({ prefix: "goalforge-cli-dir-" });
-  const elsewhere = Deno.makeTempDirSync({ prefix: "goalforge-cli-cwd-" });
-  const home = Deno.makeTempDirSync({ prefix: "goalforge-home-" });
+  const project = Deno.makeTempDirSync({ prefix: "loopforge-cli-dir-" });
+  const elsewhere = Deno.makeTempDirSync({ prefix: "loopforge-cli-cwd-" });
+  const home = Deno.makeTempDirSync({ prefix: "loopforge-home-" });
   try {
     const output = await new Deno.Command(Deno.execPath(), {
       args: [
@@ -374,17 +374,17 @@ Deno.test("CLI -C targets another project directory", async () => {
         "status",
       ],
       cwd: elsewhere,
-      env: { GOALFORGE_HOME: home },
+      env: { LOOPFORGE_HOME: home },
       stdout: "piped",
       stderr: "piped",
     }).output();
     assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
     assertStringIncludes(new TextDecoder().decode(output.stdout), "Active goal:");
-    const stat = await Deno.stat(`${project}/.goalforge`);
+    const stat = await Deno.stat(`${project}/.loopforge`);
     assertEquals(stat.isDirectory, true);
     let elsewhereHasBoard = true;
     try {
-      await Deno.stat(`${elsewhere}/.goalforge`);
+      await Deno.stat(`${elsewhere}/.loopforge`);
     } catch {
       elsewhereHasBoard = false;
     }

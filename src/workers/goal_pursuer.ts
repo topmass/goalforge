@@ -15,7 +15,7 @@ import { CodexClient } from "./codex_app_server.ts";
 import { parsePlannerResponse } from "./goal_planner.ts";
 import { probeLights, runGoalProbes } from "./goal_probes.ts";
 import { runScout } from "./goal_scout.ts";
-import { GoalForgeWorker } from "./goalforge_worker.ts";
+import { LoopForgeWorker } from "./loopforge_worker.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 
@@ -142,7 +142,7 @@ export class GoalPursuer {
           return this.finish(
             goalId,
             iteration,
-            "The same win conditions kept failing after a replan; GoalForge needs direction.",
+            "The same win conditions kept failing after a replan; LoopForge needs direction.",
             asks.length
               ? asks
               : failing.map((result) =>
@@ -160,7 +160,7 @@ export class GoalPursuer {
           return this.finish(
             goalId,
             iteration,
-            "GoalForge could not plan further tasks for the failing win conditions.",
+            "LoopForge could not plan further tasks for the failing win conditions.",
             asks,
           );
         }
@@ -188,7 +188,7 @@ export class GoalPursuer {
           backend: normalizeEscalation(this.options.escalateBackend!),
         })
       : this.options.createCodexClient;
-    const worker = new GoalForgeWorker(this.root, this.store, {
+    const worker = new LoopForgeWorker(this.root, this.store, {
       onEvent: this.options.onEvent,
       createCodexClient: factory,
     });
@@ -309,7 +309,7 @@ function buildReplanPrompt(
   asks: string[],
   projectMemory: string,
 ): string {
-  return `You are the GoalForge main agent replanning an open goal during a pursue loop.
+  return `You are the LoopForge main agent replanning an open goal during a pursue loop.
 
 Goal ${goal.id}: ${goal.text}
 
@@ -330,7 +330,7 @@ ${
 Blocked task asks:
 ${asks.length ? asks.map((ask) => `- ${ask}`).join("\n") : "- none"}
 
-Current GoalForge board memory:
+Current LoopForge board memory:
 ${projectMemory}
 
 Rules:

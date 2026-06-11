@@ -290,7 +290,7 @@ const renderer = await createCliRenderer({
   ],
 });
 
-renderer.setTerminalTitle("GoalForge Command Center");
+renderer.setTerminalTitle("LoopForge Command Center");
 renderer.keyInput.on("keypress", (key) => {
   void handleKey(key.name || key.raw || key.sequence);
 });
@@ -519,7 +519,7 @@ async function buildGoal(text: string): Promise<void> {
         }
         return `Created ${tasks.length} task${
           tasks.length === 1 ? "" : "s"
-        } and started ready work. GoalForge will close the goal when proof is complete. Selected ${firstTask.title}.`;
+        } and started ready work. LoopForge will close the goal when proof is complete. Selected ${firstTask.title}.`;
       },
     },
   );
@@ -1040,7 +1040,7 @@ function createFooterActionRows(): FooterAction[][] {
       run: () => {
         const task = selectedTask();
         if (task) {
-          openPrompt("steer", `Tell GoalForge what ${task.id} needs.`);
+          openPrompt("steer", `Tell LoopForge what ${task.id} needs.`);
         } else {
           state.notice = "Select a task before adding input.";
         }
@@ -1816,13 +1816,13 @@ function statusHeadline(): string {
   const runningRuns = state.board.runs.filter((run) => run.status === "running");
   const blocked = state.board.tasks.filter((task) => task.status === "blocked");
   if (state.busy) {
-    return `GoalForge is working: ${state.notice}`;
+    return `LoopForge is working: ${state.notice}`;
   }
   if (runningRuns.length) {
     const titles = runningRuns.map((run) =>
       state.board.tasks.find((task) => task.id === run.taskId)?.title ?? run.taskId
     );
-    return `GoalForge is working on ${short(titles.join(", "), 100)}`;
+    return `LoopForge is working on ${short(titles.join(", "), 100)}`;
   }
   if (blocked.length) {
     return `${blocked.length} task${blocked.length === 1 ? "" : "s"} need input`;
@@ -1845,7 +1845,7 @@ function statusHeadline(): string {
   if (done.length) {
     return `${done.length} completed task${done.length === 1 ? "" : "s"} on the board`;
   }
-  return `GoalForge Command Center  ${state.board.tasks.length} tasks`;
+  return `LoopForge Command Center  ${state.board.tasks.length} tasks`;
 }
 
 function selectedTask(): Task | null {

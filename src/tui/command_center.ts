@@ -6,7 +6,7 @@ import { normalizeRoot } from "../paths.ts";
 import { ensureGitRepository, gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
-import { GoalForgeWorker } from "../workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../workers/loopforge_worker.ts";
 import { buildProjectMemory } from "../workers/project_memory.ts";
 import { buildTaskCard, ensureProjectKnowledgeFiles } from "../workers/task_memory.ts";
 import { readWorkflow } from "../workflow/workflow.ts";
@@ -54,7 +54,7 @@ export async function runCommandCenterTui(root = Deno.cwd(), args: string[] = []
   ensureProjectKnowledgeFiles(normalizedRoot);
   await ensureGitRepository(normalizedRoot);
   if (!snapshot && !store.getProjectState().mainThreadId) {
-    const worker = new GoalForgeWorker(normalizedRoot, store);
+    const worker = new LoopForgeWorker(normalizedRoot, store);
     await worker.ensureMainThread();
   }
 
@@ -426,7 +426,7 @@ class CommandCenterApp {
     const reviewText = [
       latest.validation,
       "",
-      `GoalForge review: ${result.verdict.toUpperCase()}`,
+      `LoopForge review: ${result.verdict.toUpperCase()}`,
       result.notes,
     ].filter(Boolean).join("\n");
     this.store.updateTaskValidation(task.id, reviewText);
@@ -453,7 +453,7 @@ class CommandCenterApp {
         task.id,
         "blocked",
         "merger",
-        "GoalForge cannot merge because this task has no assigned branch.",
+        "LoopForge cannot merge because this task has no assigned branch.",
       );
       return;
     }
@@ -561,14 +561,14 @@ class CommandCenterApp {
   private resetMainThread(threadId: string): void {
     const state = this.store.resetMainThread(
       threadId || `manual-main-${crypto.randomUUID()}`,
-      "Project main thread reset from the GoalForge command center.",
+      "Project main thread reset from the LoopForge command center.",
     );
     this.state.notice = `Main thread reset to ${state.mainThreadId}.`;
     this.pullBoard();
   }
 
-  private worker(): GoalForgeWorker {
-    return new GoalForgeWorker(this.root, this.store, {
+  private worker(): LoopForgeWorker {
+    return new LoopForgeWorker(this.root, this.store, {
       onEvent: () => {
         this.pullBoard();
       },
@@ -639,7 +639,7 @@ export function renderCommandCenterFrame(
   const header = [
     theme.header(
       pad(
-        ` ${spinner} GoalForge Command Center  ${board.tasks.length} tasks  ${activeRuns.length} live  ${blocked.length} inbox`,
+        ` ${spinner} LoopForge Command Center  ${board.tasks.length} tasks  ${activeRuns.length} live  ${blocked.length} inbox`,
         width,
       ),
     ),

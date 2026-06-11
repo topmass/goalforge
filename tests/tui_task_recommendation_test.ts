@@ -39,7 +39,7 @@ Deno.test("task recommendation hides raw missing session errors", () => {
 
   assertEquals(
     recommendation.summary,
-    "GoalForge could not reopen a saved Codex session for this task.",
+    "LoopForge could not reopen a saved Codex session for this task.",
   );
   assertStringIncludes(recommendation.action, "fresh Codex session");
 });
@@ -49,7 +49,7 @@ Deno.test("task recommendation tells users how to resume queued guidance", () =>
     {
       ...baseTask,
       status: "blocked",
-      blockedReason: "GoalForge needs input: which repo should receive the commit?",
+      blockedReason: "LoopForge needs input: which repo should receive the commit?",
     },
     [{ taskId: "TASK-1", processed: false }],
   );
@@ -62,7 +62,7 @@ Deno.test("task recommendation blocks review when validation proof is incomplete
   const recommendation = taskRecommendation({
     ...baseTask,
     status: "review",
-    validation: "GoalForge review: APPROVED",
+    validation: "LoopForge review: APPROVED",
   });
 
   assertStringIncludes(recommendation.summary, "Validation evidence is incomplete");
@@ -73,7 +73,7 @@ Deno.test("task recommendation warns when done task has evidence gaps", () => {
   const recommendation = taskRecommendation({
     ...baseTask,
     status: "done",
-    validation: "GoalForge review: APPROVED",
+    validation: "LoopForge review: APPROVED",
   });
 
   assertStringIncludes(recommendation.summary, "marked done, but proof is incomplete");

@@ -1,6 +1,6 @@
 # Project Specsheet
 
-GoalForge durable project memory.
+LoopForge durable project memory.
 
 ## Rules
 
@@ -8,8 +8,8 @@ GoalForge durable project memory.
 - Promote only validated or merged behavior into this file.
 - Use exact file paths, commands, risks, and follow-ups.
 
-## TASK-1: commit and push goalforge current state to goalforge github
+## TASK-1: commit and push loopforge current state to loopforge github
 
-Published main to origin for TASK-1: commit and push goalforge current state to goalforge github.
+Published main to origin for TASK-1: commit and push loopforge current state to loopforge github.
 No new commit was needed; pushed existing commits at 1de24e9.
 Remote and local heads match after push.

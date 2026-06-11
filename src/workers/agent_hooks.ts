@@ -1,4 +1,4 @@
-// Merges the GoalForge status hook into coding-agent hook settings files.
+// Merges the LoopForge status hook into coding-agent hook settings files.
 // Claude Code uses ~/.claude/settings.json; Codex CLI uses ~/.codex/hooks.json.
 // Both share the same event -> matcher -> command hook shape.
 

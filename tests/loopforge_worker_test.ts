@@ -10,7 +10,7 @@ import {
   CodexTurnResult,
 } from "../src/workers/codex_app_server.ts";
 import { PullRequestGate, PullRequestInfo } from "../src/workers/github_pr.ts";
-import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../src/workers/loopforge_worker.ts";
 
 Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", async () => {
   const root = Deno.makeTempDirSync();
@@ -36,7 +36,7 @@ Deno.test("worker assigns worktree, streams Codex events, reviews, and merges", 
       `---
 version: 1
 tracker:
-  kind: goalforge-local
+  kind: loopforge-local
 agent:
   max_concurrent_agents: 2
   max_turns: 1
@@ -47,7 +47,7 @@ codex:
   reasoning_effort: high
   fast_mode: true
 workspace:
-  worktrees_dir: .goalforge/custom-worktrees
+  worktrees_dir: .loopforge/custom-worktrees
   hooks:
     before_run:
       - printf before > workflow-before.txt
@@ -60,27 +60,27 @@ Custom workflow instruction.
 `,
     );
     const { task } = store.createGoal("Exercise the Codex worker");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       onEvent: (event) => streamed.push(`${event.kind}:${event.message}`),
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
     const updated = await worker.runTask(task.id);
     assertEquals(updated.status, "done");
-    assert(updated.branchName?.startsWith("goalforge/task-1"));
-    assert(updated.worktreePath?.includes(".goalforge/custom-worktrees/TASK-1"));
+    assert(updated.branchName?.startsWith("loopforge/task-1"));
+    assert(updated.worktreePath?.includes(".loopforge/custom-worktrees/TASK-1"));
     assertEquals(updated.threadId, "thread-test");
     assertEquals(updated.parentThreadId, "thread-test");
     assertStringIncludes(
       updated.contextManifestPath ?? "",
-      ".goalforge/tasks/TASK-1/context-manifest.json",
+      ".loopforge/tasks/TASK-1/context-manifest.json",
     );
     assertStringIncludes(updated.taskCard, "TASK-1 status: done");
-    assertStringIncludes(updated.handoffSummary, "GoalForge Task Handoff");
+    assertStringIncludes(updated.handoffSummary, "LoopForge Task Handoff");
     assertStringIncludes(updated.touchedPaths.join("\n"), "task-1-codex-output.txt");
     assertStringIncludes(updated.validation, "Codex App Server turn completed");
     assertStringIncludes(updated.validation, "Commit:");
     assertStringIncludes(updated.validation, "Test turn:");
-    assertStringIncludes(updated.validation, "GoalForge review: APPROVED");
+    assertStringIncludes(updated.validation, "LoopForge review: APPROVED");
     assertEquals(updated.loopPhase, "done");
     assertEquals(updated.currentGate, "complete");
     assertStringIncludes(updated.nextAction, "project memory");
@@ -113,7 +113,7 @@ Deno.test("worker recovers when the saved project Codex session is missing", asy
     store.initProject();
     store.setMainThread("stale-main-thread", "Old session.");
     const { task } = store.createGoal("Recover missing Codex session");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       onEvent: (event) => streamed.push(event.message),
       createCodexClient: (onEvent) => new MissingThreadCodexClient(onEvent),
     });
@@ -129,7 +129,7 @@ Deno.test("worker recovers when the saved project Codex session is missing", asy
   }
 });
 
-Deno.test("worker names main and task Codex threads with GoalForge project context", async () => {
+Deno.test("worker names main and task Codex threads with LoopForge project context", async () => {
   const root = Deno.makeTempDirSync();
   await seedGitRepo(root);
 
@@ -139,15 +139,15 @@ Deno.test("worker names main and task Codex threads with GoalForge project conte
   try {
     store.initProject();
     const { task } = store.createGoal("Name the task thread");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) =>
         new NameRecordingCodexClient(onEvent, names, developerInstructions),
     });
     await worker.runTask(task.id);
     assert(names.some((name) => name.endsWith(" - main")));
     assert(names.some((name) => name.includes("TASK-1")));
-    assert(developerInstructions.some((text) => text.includes("persistent GoalForge main thread")));
-    assert(developerInstructions.some((text) => text.includes("GoalForge task worker")));
+    assert(developerInstructions.some((text) => text.includes("persistent LoopForge main thread")));
+    assert(developerInstructions.some((text) => text.includes("LoopForge task worker")));
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -164,7 +164,7 @@ Deno.test("worker resumes blocked task thread for continuation turns", async () 
   try {
     store.initProject();
     const { task } = store.createGoal("Continue reviewed work");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new ChangesRequestedCodexClient(onEvent, resumed, prompts),
     });
     await worker.runTask(task.id);
@@ -190,7 +190,7 @@ Deno.test("worker queue processes dispatchable tasks one at a time", async () =>
     store.initProject();
     const first = store.createGoal("First queued task");
     const second = store.createGoal("Second queued task");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
     const completed = await worker.runQueue();
@@ -218,7 +218,7 @@ Deno.test("worker retries transient workflow hook failures", async () => {
       `---
 version: 1
 tracker:
-  kind: goalforge-local
+  kind: loopforge-local
 agent:
   max_concurrent_agents: 1
   max_turns: 1
@@ -229,7 +229,7 @@ codex:
   reasoning_effort: high
   fast_mode: true
 workspace:
-  worktrees_dir: .goalforge/worktrees
+  worktrees_dir: .loopforge/worktrees
   hooks:
     before_run:
       - test -f retry-once || (touch retry-once && exit 1)
@@ -238,7 +238,7 @@ workspace:
 `,
     );
     const { task } = store.createGoal("Retry transient hook failure");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       onEvent: (event) => streamed.push(`${event.kind}:${event.message}`),
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
@@ -261,7 +261,7 @@ Deno.test("worker can gate approved review through a GitHub PR", async () => {
     store.initProject();
     updateConfig(root, { githubPrReview: true });
     const { task } = store.createGoal("Exercise PR gate");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
       pullRequestGate,
     });
@@ -285,13 +285,13 @@ Deno.test("worker steers an active task after live failure output", async () => 
   try {
     store.initProject();
     const { task } = store.createGoal("React to failing live output");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new FailingOutputCodexClient(onEvent, steers),
     });
     const updated = await worker.runTask(task.id);
     assertEquals(updated.status, "done");
     assertEquals(steers.length, 1);
-    assertStringIncludes(steers[0], "GoalForge live supervisor");
+    assertStringIncludes(steers[0], "LoopForge live supervisor");
     assert(
       store.getBoard().events.some((event) =>
         event.role === "supervisor" && event.kind === "steer"
@@ -300,7 +300,7 @@ Deno.test("worker steers an active task after live failure output", async () => 
     assert(
       store.getBoard().agentStatuses.some((status) =>
         status.phase === "done" &&
-        status.lastSupervisorAction?.includes("GoalForge live supervisor")
+        status.lastSupervisorAction?.includes("LoopForge live supervisor")
       ),
     );
   } finally {
@@ -326,7 +326,7 @@ Deno.test("worker records supervisor gap when goal contract proof is missing", a
     ], {
       completionContract: "- Quasar zettabyte audit ledger reconciles.",
     });
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
     const updated = await worker.runTask(tasks[0].id);
@@ -373,7 +373,7 @@ Deno.test("worker queue runs automatic contract repair tasks", async () => {
     ], {
       completionContract: "- Quasar zettabyte audit ledger reconciles.",
     });
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new ContractRepairProofCodexClient(onEvent),
     });
 
@@ -421,7 +421,7 @@ Deno.test("worker queue runs automatic completion evidence repair tasks", async 
         "Commit: abc123",
         "Git status:",
         "clean",
-        "GoalForge review: APPROVED",
+        "LoopForge review: APPROVED",
       ].join("\n"),
     );
     store.updateTaskCard(task.id, "TASK-1 complete.");
@@ -434,7 +434,7 @@ Deno.test("worker queue runs automatic completion evidence repair tasks", async 
       "TASK-1 evidence gap: missing discovered verification gates.",
     ]);
 
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new EvidenceRepairProofCodexClient(onEvent),
     });
     const completed = await worker.runQueue();
@@ -461,7 +461,7 @@ Deno.test("worker queue runs automatic completion evidence repair tasks", async 
   }
 });
 
-Deno.test("worker blocks task when GoalForge cannot create commit", async () => {
+Deno.test("worker blocks task when LoopForge cannot create commit", async () => {
   const root = Deno.makeTempDirSync();
   await seedGitRepo(root);
 
@@ -469,7 +469,7 @@ Deno.test("worker blocks task when GoalForge cannot create commit", async () => 
   try {
     store.initProject();
     const { task } = store.createGoal("Exercise failed commit handling");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new CommitFailingCodexClient(onEvent),
     });
     const updated = await worker.runTask(task.id);
@@ -477,11 +477,11 @@ Deno.test("worker blocks task when GoalForge cannot create commit", async () => 
     assertStringIncludes(updated.validation, "Commit: commit failed:");
     assertStringIncludes(
       updated.blockedReason ?? "",
-      "GoalForge could not create a commit",
+      "LoopForge could not create a commit",
     );
     assertEquals(updated.loopPhase, "blocked");
     assertEquals(updated.currentGate, "needs-input");
-    assertStringIncludes(updated.needsInputPrompt ?? "", "GoalForge could not create a commit");
+    assertStringIncludes(updated.needsInputPrompt ?? "", "LoopForge could not create a commit");
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -498,7 +498,7 @@ Deno.test("worker stops an active task through the running Codex client", async 
   try {
     store.initProject();
     const { task } = store.createGoal("Stop active worker turn");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) =>
         new InterruptibleCodexClient(onEvent, () => implementationStarted.resolve(), () => {
           interruptCalled = true;
@@ -545,7 +545,7 @@ Deno.test("worker pauses ready tasks that conflict with completed work", async (
       },
     ]);
     store.updateTaskTouchedPaths(tasks[1].id, ["task-1-codex-output.txt"]);
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TestCodexClient(onEvent),
     });
     const updated = await worker.runTask(tasks[0].id);
@@ -570,7 +570,7 @@ Deno.test("worker repairs failed verification before review", async () => {
     store.initProject();
     await writeWorkflow(root, { maxTurns: 2 });
     const { task } = store.createGoal("Repair after failed verification");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new RepairingVerificationCodexClient(onEvent, prompts),
     });
     const updated = await worker.runTask(task.id);
@@ -598,7 +598,7 @@ Deno.test("worker blocks when verification repair budget is exhausted", async ()
     store.initProject();
     await writeWorkflow(root, { maxTurns: 1 });
     const { task } = store.createGoal("Block after failed verification");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new AlwaysFailingVerificationCodexClient(onEvent),
     });
     const updated = await worker.runTask(task.id);
@@ -634,7 +634,7 @@ async function writeWorkflow(root: string, options: { maxTurns: number }): Promi
     `---
 version: 1
 tracker:
-  kind: goalforge-local
+  kind: loopforge-local
 agent:
   max_concurrent_agents: 1
   max_turns: ${options.maxTurns}
@@ -645,7 +645,7 @@ codex:
   reasoning_effort: high
   fast_mode: true
 workspace:
-  worktrees_dir: .goalforge/worktrees
+  worktrees_dir: .loopforge/worktrees
   hooks:
     before_run: []
     after_run: []
@@ -683,7 +683,7 @@ Deno.test("worker runs ops publish tasks deterministically without Codex", async
       kind: "ops",
       opsAction: "publish",
     }]);
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: () => {
         throw new Error("Ops tasks must not start a Codex client.");
       },
@@ -693,9 +693,9 @@ Deno.test("worker runs ops publish tasks deterministically without Codex", async
     assertEquals(updated.kind, "ops");
     assertEquals(updated.loopPhase, "done");
     assertEquals(updated.currentGate, "complete");
-    assertStringIncludes(updated.validation, "GoalForge publish action completed.");
+    assertStringIncludes(updated.validation, "LoopForge publish action completed.");
     assertStringIncludes(updated.validation, "VERIFICATION_PASSED");
-    assertStringIncludes(updated.validation, "GoalForge review: APPROVED");
+    assertStringIncludes(updated.validation, "LoopForge review: APPROVED");
     assertStringIncludes(updated.handoffSummary, "Published main to origin");
     const board = store.getBoard();
     assertEquals(board.goals.find((item) => item.id === goal.id)?.status, "closed");
@@ -743,7 +743,7 @@ authority:
       kind: "ops",
       opsAction: "publish",
     }]);
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: () => {
         throw new Error("Ops tasks must not start a Codex client.");
       },
@@ -785,7 +785,7 @@ Deno.test("main agent triage retries a worker with corrected instructions", asyn
       testEngineerCalls: 0,
       triageCalls: 0,
     };
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TriageScriptedCodexClient(onEvent, script),
     });
     const updated = await worker.runTask(task.id);
@@ -833,7 +833,7 @@ Deno.test("main agent triage escalates hard external blockers with one clear ask
       testEngineerCalls: 0,
       triageCalls: 0,
     };
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TriageScriptedCodexClient(onEvent, script),
     });
     const updated = await worker.runTask(task.id);
@@ -877,7 +877,7 @@ Deno.test("triage escalates immediately when the same blocker repeats", async ()
       testEngineerCalls: 0,
       triageCalls: 0,
     };
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TriageScriptedCodexClient(onEvent, script),
     });
     const updated = await worker.runTask(task.id);
@@ -926,7 +926,7 @@ Deno.test("main agent triage resolves publish blockers with the harness action",
       testEngineerCalls: 0,
       triageCalls: 0,
     };
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new TriageScriptedCodexClient(onEvent, script),
     });
     const updated = await worker.runTask(task.id);
@@ -934,7 +934,7 @@ Deno.test("main agent triage resolves publish blockers with the harness action",
     assertEquals(updated.kind, "ops");
     assertEquals(updated.opsAction, "publish");
     assertEquals(script.triageCalls, 1);
-    assertStringIncludes(updated.validation, "GoalForge publish action completed.");
+    assertStringIncludes(updated.validation, "LoopForge publish action completed.");
     const board = store.getBoard();
     assertEquals(board.goals.find((item) => item.id === goal.id)?.status, "closed");
     const remoteFiles = await gitOutput(origin, ["ls-tree", "--name-only", "HEAD"]);
@@ -983,8 +983,8 @@ class TestCodexClient implements CodexClient {
 
   async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
     this.prompts.push(_input.prompt);
-    if (_input.title === "GoalForge main thread seed") {
-      assertStringIncludes(_input.prompt, "persistent GoalForge main thread");
+    if (_input.title === "LoopForge main thread seed") {
+      assertStringIncludes(_input.prompt, "persistent LoopForge main thread");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -1000,8 +1000,8 @@ class TestCodexClient implements CodexClient {
       };
     }
 
-    if (_input.title === "GoalForge scheduler") {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    if (_input.title === "LoopForge scheduler") {
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -1022,7 +1022,7 @@ class TestCodexClient implements CodexClient {
 
     if (_input.title.endsWith(": test-engineer")) {
       assertStringIncludes(_input.prompt, "Project AGENTS.md context");
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       assertStringIncludes(_input.prompt, "Discovered verification gates");
       this.onEvent({
         taskId: null,
@@ -1040,7 +1040,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": review")) {
-      assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+      assertStringIncludes(_input.prompt, "Current LoopForge board memory");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -1057,7 +1057,7 @@ class TestCodexClient implements CodexClient {
     }
 
     if (_input.title.endsWith(": absorb")) {
-      assertStringIncludes(_input.prompt, "Absorb this completed GoalForge task");
+      assertStringIncludes(_input.prompt, "Absorb this completed LoopForge task");
       this.onEvent({
         taskId: null,
         runId: null,
@@ -1073,7 +1073,7 @@ class TestCodexClient implements CodexClient {
       };
     }
 
-    assertStringIncludes(_input.prompt, "Current GoalForge board memory");
+    assertStringIncludes(_input.prompt, "Current LoopForge board memory");
     assertStringIncludes(_input.prompt, "Codex-native subagents");
     assertStringIncludes(_input.prompt, "Repo WORKFLOW.md instructions");
     const taskId = _input.title.split(":")[0].toLowerCase();
@@ -1192,7 +1192,7 @@ class MissingThreadCodexClient extends TestCodexClient {
     session: CodexSession,
     input: CodexTurnInput,
   ): Promise<CodexTurnResult> {
-    if (input.title === "GoalForge main thread seed") {
+    if (input.title === "LoopForge main thread seed") {
       this.seededThreads.add(session.threadId);
     }
     return await super.runTurn(session, input);

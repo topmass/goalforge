@@ -80,7 +80,7 @@ const SCOUT_JSON = JSON.stringify({
 });
 
 Deno.test("scout proposes ideas, ranks them, and never re-pitches rejections", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-scout-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-scout-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -93,7 +93,7 @@ Deno.test("scout proposes ideas, ranks them, and never re-pitches rejections", a
     });
     assertEquals(report.ran, true);
     assertEquals(report.added.length, 2);
-    assertStringIncludes(client.prompts[0], "GoalForge scout");
+    assertStringIncludes(client.prompts[0], "LoopForge scout");
     assertStringIncludes(client.prompts[0], "lite.duckduckgo.com");
 
     const pending = store.listIdeas("proposed");
@@ -123,7 +123,7 @@ Deno.test("scout proposes ideas, ranks them, and never re-pitches rejections", a
 });
 
 Deno.test("scout skips when the pending list is already full", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-scout-cap-" });
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-scout-cap-" });
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -145,10 +145,10 @@ Deno.test("scout skips when the pending list is already full", async () => {
 });
 
 Deno.test("scout prompt includes search instructions and rejected titles", async () => {
-  const root = Deno.makeTempDirSync({ prefix: "goalforge-scout-search-" });
-  const home = Deno.makeTempDirSync({ prefix: "goalforge-scout-home-" });
-  const previous = Deno.env.get("GOALFORGE_HOME");
-  Deno.env.set("GOALFORGE_HOME", home);
+  const root = Deno.makeTempDirSync({ prefix: "loopforge-scout-search-" });
+  const home = Deno.makeTempDirSync({ prefix: "loopforge-scout-home-" });
+  const previous = Deno.env.get("LOOPFORGE_HOME");
+  Deno.env.set("LOOPFORGE_HOME", home);
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -174,9 +174,9 @@ Deno.test("scout prompt includes search instructions and rejected titles", async
   } finally {
     store.close();
     if (previous === undefined) {
-      Deno.env.delete("GOALFORGE_HOME");
+      Deno.env.delete("LOOPFORGE_HOME");
     } else {
-      Deno.env.set("GOALFORGE_HOME", previous);
+      Deno.env.set("LOOPFORGE_HOME", previous);
     }
     Deno.removeSync(root, { recursive: true });
     Deno.removeSync(home, { recursive: true });

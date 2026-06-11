@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
 import { BoardStore } from "../src/board/store.ts";
 import { ActivityEventInput } from "../src/board/types.ts";
-import { GoalForgeWorker } from "../src/workers/goalforge_worker.ts";
+import { LoopForgeWorker } from "../src/workers/loopforge_worker.ts";
 import { PiRpcClient } from "../src/workers/pi_rpc_client.ts";
 
 function fakePiCommand(): string[] {
@@ -21,12 +21,12 @@ Deno.test("pi rpc client maps sessions, turns, and events onto the agent interfa
     command: fakePiCommand(),
   });
   try {
-    const session = await client.startSession(cwd, { name: "GoalForge - test - main" });
+    const session = await client.startSession(cwd, { name: "LoopForge - test - main" });
     assert(session.threadId.endsWith(".jsonl"));
 
     const turn = await client.runTurn(session, {
       title: "TASK-1: implement",
-      prompt: "You are a GoalForge Codex worker.\nImplement the fixture change.",
+      prompt: "You are a LoopForge Codex worker.\nImplement the fixture change.",
     });
     assertEquals(turn.status, "completed");
     assertEquals(turn.completed, true);
@@ -108,13 +108,13 @@ Deno.test("worker completes a full task loop through the pi backend", async () =
   try {
     store.initProject();
     const { task } = store.createGoal("Exercise the pi worker backend");
-    const worker = new GoalForgeWorker(root, store, {
+    const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new PiRpcClient(onEvent, { command: fakePiCommand() }),
     });
     const updated = await worker.runTask(task.id);
     assertEquals(updated.status, "done");
     assertStringIncludes(updated.validation, "VERIFICATION_PASSED");
-    assertStringIncludes(updated.validation, "GoalForge review: APPROVED");
+    assertStringIncludes(updated.validation, "LoopForge review: APPROVED");
     assertStringIncludes(updated.touchedPaths.join("\n"), "fake-pi-output.txt");
     assert(updated.threadId?.endsWith(".jsonl"));
     assertEquals(store.getGoal(updated.goalId).status, "closed");
