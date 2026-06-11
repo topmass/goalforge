@@ -73,6 +73,45 @@ function oneLine(value: string, maxCharacters: number): string {
   return text.length > maxCharacters ? `${text.slice(0, maxCharacters - 3)}...` : text;
 }
 
+// Tasks that merged or finished with "needs manual verification" notes in
+// their evidence: the morning checklist for what only a human can confirm.
+export interface ManualVerificationItem {
+  taskId: string;
+  title: string;
+  notes: string[];
+}
+
+export function listManualVerificationItems(board: {
+  tasks: Array<{
+    id: string;
+    title: string;
+    status: string;
+    validation: string;
+    handoffSummary: string;
+    verificationSummary: string;
+  }>;
+}): ManualVerificationItem[] {
+  const items: ManualVerificationItem[] = [];
+  for (const task of board.tasks) {
+    if (!["done", "review", "merging"].includes(task.status)) {
+      continue;
+    }
+    const text = [task.validation, task.handoffSummary, task.verificationSummary]
+      .filter(Boolean).join("\n");
+    const notes = [
+      ...new Set(
+        text.split(/\r?\n/)
+          .map((line) => line.replace(/^[-*\s]+/, "").trim())
+          .filter((line) => /needs manual verification/i.test(line)),
+      ),
+    ];
+    if (notes.length) {
+      items.push({ taskId: task.id, title: task.title, notes: notes.slice(0, 3) });
+    }
+  }
+  return items;
+}
+
 export function formatHealthLines(board: BoardSnapshot): string[] {
   const goal = summarizeGoalProgress(board);
   const running = board.runs.filter((run) => run.status === "running").length;

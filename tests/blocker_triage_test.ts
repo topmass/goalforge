@@ -80,3 +80,26 @@ Deno.test("triage prompt frames autonomy and forbids escalating manual-QA blocke
   assertStringIncludes(prompt, "needs manual verification");
   assertStringIncludes(prompt, "not an escalation");
 });
+
+Deno.test("triage prompt carries the decision-brief template and run mode", () => {
+  const base = {
+    task: {
+      id: "TASK-9",
+      title: "Fix shop rebuy",
+      description: "Patch the rebuy handler.",
+      triageAttempts: 0,
+    } as Task,
+    blocker: "Which provider account should this use?",
+    allowedActions: [],
+    projectMemory: "none",
+    workflowInstructions: "none",
+  };
+  const attended = buildTriagePrompt(base);
+  assertStringIncludes(attended, "Ask: <one sentence");
+  assertStringIncludes(attended, "Recommendation:");
+  assertStringIncludes(attended, "Options:");
+  assertStringIncludes(attended, "attended session");
+
+  const unattended = buildTriagePrompt({ ...base, runMode: "unattended" });
+  assertStringIncludes(unattended, "UNATTENDED timed run");
+});

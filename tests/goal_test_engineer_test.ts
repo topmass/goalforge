@@ -92,3 +92,20 @@ Deno.test("test engineer prompt reserves NEEDS_INPUT for absolute blockers", asy
   assertStringIncludes(captured, "never NEEDS_INPUT");
   assertStringIncludes(captured, "needs manual verification");
 });
+
+Deno.test("test engineer prompt states the unattended run mode", async () => {
+  const engineer = new GoalTestEngineer("", "", "", "", { runMode: "unattended" });
+  let captured = "";
+  const client = {
+    runTurn: (_session: CodexSession, input: { title: string; prompt: string }) => {
+      captured = input.prompt;
+      return Promise.resolve({} as CodexTurnResult);
+    },
+  };
+  await engineer.run(
+    client,
+    {} as CodexSession,
+    { id: "TASK-9", title: "t", description: "d", riskLevel: "low", dependencyIds: [] } as unknown as Task,
+  );
+  assertStringIncludes(captured, "Run mode: UNATTENDED");
+});

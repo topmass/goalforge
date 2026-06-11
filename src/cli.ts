@@ -1,6 +1,11 @@
 import { BoardStore } from "./board/store.ts";
 import { TASK_STATUS_LABELS } from "./board/types.ts";
-import { formatGoalLines, formatHealthLines, formatStatusLines } from "./board/status_lines.ts";
+import {
+  formatGoalLines,
+  formatHealthLines,
+  formatStatusLines,
+  listManualVerificationItems,
+} from "./board/status_lines.ts";
 import { summarizeGoalProgress } from "./board/goal_progress.ts";
 import { normalizeRoot, runtimeDirName, workflowPath } from "./paths.ts";
 import { startServer } from "./web/server.ts";
@@ -631,6 +636,24 @@ function standupCommand(): void {
       }
     } else {
       console.log("- nothing");
+    }
+    console.log("");
+    console.log("Needs manual verification:");
+    const manual = listManualVerificationItems(board);
+    if (manual.length) {
+      for (const item of manual) {
+        console.log(`- ${item.taskId} ${item.title.slice(0, 60)}`);
+        for (const note of item.notes) {
+          console.log(`    ${note.slice(0, 110)}`);
+        }
+      }
+    } else {
+      console.log("- none");
+    }
+    const baseline = board.events.find((event) => event.kind === "baseline");
+    if (baseline) {
+      console.log("");
+      console.log(`Run baseline: ${baseline.message.replace(/^GOAL-\d+:\s*/, "")}`);
     }
     console.log("");
     console.log("Scout ideas awaiting review:");

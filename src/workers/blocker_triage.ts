@@ -4,6 +4,7 @@
 // user with one clear ask. Parsing fails closed to escalate.
 
 import { Task } from "../board/types.ts";
+import type { RunMode } from "../board/prompts.ts";
 
 export type TriageVerdict = "resolve" | "retry" | "escalate";
 
@@ -58,6 +59,7 @@ export function buildTriagePrompt(input: {
   allowedActions: string[];
   projectMemory: string;
   workflowInstructions: string;
+  runMode?: RunMode;
 }): string {
   const actions = input.allowedActions.length
     ? input.allowedActions.map((action) =>
@@ -73,6 +75,13 @@ user must be asked.
 LoopForge runs pseudo-autonomously: the user may be away for hours and expects to come back to
 finished work, not a stalled queue. Escalation is the last resort, reserved for blockers where
 literally nothing can proceed without the user.
+${
+    input.runMode === "unattended"
+      ? `This is an UNATTENDED timed run: nobody is available to answer. Exhaust every retry and
+harness action before escalating; an escalated task simply sits idle until the run ends.`
+      : `This is an attended session: the user can answer a well-prepared question, but only ask
+once the work is at a decision-ready state.`
+  }
 
 Task:
 - ID: ${input.task.id}
@@ -104,9 +113,11 @@ Rules:
 - A worker asking which reasonable option to pick (naming, structure, library already used in
   the repo, test approach) is not an escalation: TRIAGE_RETRY and tell it to pick the option
   most consistent with the existing code and note the decision in its handoff.
-- TRIAGE_ESCALATE followed by a single-sentence ask when the blocker needs something only the
+- TRIAGE_ESCALATE followed by a decision brief when the blocker needs something only the
   user can provide: credentials, API keys, third-party accounts, money, destructive approval,
   or a product decision. Never retry these.
+- An escalation is a prepared decision, not a status dump. Never paste raw tool output,
+  verifier logs, or markdown tables into the brief; distill them.
 - When unsure, escalate.
 
 Required format (pick one):
@@ -117,7 +128,10 @@ TRIAGE_RETRY
 <corrected instructions for the worker>
 
 TRIAGE_ESCALATE
-<single-sentence ask telling the user exactly what to provide or decide>
+Ask: <one sentence: the exact decision, credential, or action needed from the user>
+Done so far: <one or two lines: work already completed and proof gathered before stopping>
+Recommendation: <the option you would pick and why, in one line>
+Options: <each available choice on its own line, with what choosing it does>
 `;
 }
 

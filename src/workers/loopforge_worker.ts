@@ -40,11 +40,13 @@ import {
   writeTaskContextArtifacts,
 } from "./task_memory.ts";
 import { runWorkflowHooks } from "./workflow_hooks.ts";
-import { PROMPTS } from "../board/prompts.ts";
+import { autonomyContract, PROMPTS, RunMode } from "../board/prompts.ts";
+import { listManualVerificationItems } from "../board/status_lines.ts";
 import { readWorkflow, WorkflowRuntime } from "../workflow/workflow.ts";
 
 export interface LoopForgeWorkerOptions {
   onEvent?: (event: ActivityEvent) => void;
+  runMode?: RunMode;
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
@@ -64,6 +66,7 @@ export class LoopForgeWorker {
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
   readonly pullRequestGate: PullRequestGate;
+  readonly runMode: RunMode;
   private readonly createRescueClient?: RescueClientFactory;
   private mergeChain: Promise<void> = Promise.resolve();
 
@@ -75,6 +78,7 @@ export class LoopForgeWorker {
       ((onEvent) => createAgentClient(this.root, onEvent));
     this.createRescueClient = options.createRescueClient;
     this.pullRequestGate = options.pullRequestGate ?? new GhPullRequestGate(this.root);
+    this.runMode = options.runMode ?? "attended";
   }
 
   async runNext(): Promise<Task> {
@@ -285,6 +289,30 @@ export class LoopForgeWorker {
     if (task.kind === "ops") {
       return await this.runOpsTaskAttempt(task.id);
     }
+    // A task held in Review for manual verification resumes straight to merge:
+    // restarting it is the user's confirmation, not a request to redo the work.
+    if (
+      task.status === "review" && task.currentGate === "manual-verification" && task.branchName
+    ) {
+      const mergeRun = this.store.createRun(task.id, "merger");
+      this.emit(
+        this.store.appendEvent(
+          task.id,
+          mergeRun.id,
+          "merger",
+          "resume",
+          `Manual verification confirmed by restart; merging ${task.id} now.`,
+        ),
+      );
+      try {
+        const merged = await this.mergeApprovedTask(task, mergeRun.id, null);
+        this.store.finishRun(mergeRun.id, "completed");
+        return merged;
+      } catch (error) {
+        this.store.finishRun(mergeRun.id, "failed");
+        throw error;
+      }
+    }
     const run = this.store.createRun(task.id, "worker");
     this.emit(
       this.store.appendEvent(task.id, run.id, "worker", "phase", "Preparing isolated worktree."),
@@ -479,6 +507,7 @@ export class LoopForgeWorker {
             queuedMessages,
             repairEvidence,
             repairStrategy(loopTurn),
+            this.runMode,
           ),
         });
         this.store.updateTaskActiveTurn(task.id, null);
@@ -493,6 +522,7 @@ export class LoopForgeWorker {
           workflow.instructions,
           verificationGates,
           {
+            runMode: this.runMode,
             onEvent: (event) => {
               this.emit(
                 this.store.appendEvent(
@@ -541,11 +571,15 @@ export class LoopForgeWorker {
           break;
         }
         if (verification.verdict === "needs_input" || loopTurn >= maxTurns) {
+          // The full verifier output stays in verificationSummary/validation; the
+          // needs-input prompt is the concise ask, not the dump.
           let prompt = verification.verdict === "needs_input"
             ? verification.notes
             : `Verification failed after ${maxTurns} attempt${
               maxTurns === 1 ? "" : "s"
-            }.\n\n${verification.notes}`;
+            }. Latest failure: ${
+              shortName(firstFailureLine(verification.notes), 220)
+            } Full evidence is in this task's validation. Add guidance, then restart the task.`;
           if (verification.verdict === "needs_input") {
             const triage = await this.triageBlocker({
               taskId: task.id,
@@ -1085,6 +1119,7 @@ export class LoopForgeWorker {
         await input.codex.runTurn(session, {
           title: `${task.id}: triage`,
           prompt: buildTriagePrompt({
+            runMode: this.runMode,
             task,
             blocker: input.blocker,
             allowedActions,
@@ -1400,6 +1435,7 @@ export class LoopForgeWorker {
       nextAction: "LoopForge reviewer is checking scope, diff, and validation evidence.",
     });
     const reviewer = new GoalReviewer(this.root, {
+      runMode: this.runMode,
       createCodexClient: this.createCodexClient,
       onEvent: (event) => {
         if (shouldRecordActivity(event)) {
@@ -1461,6 +1497,43 @@ export class LoopForgeWorker {
     );
 
     if (result.verdict !== "approved") {
+      // Review findings are actionable by an agent: feed them back as a bounded
+      // repair pass (shared triage-retry budget) before asking the user.
+      const latest = this.store.getTask(task.id);
+      if (latest.triageAttempts < workflow.authority.maxTriageRetries) {
+        this.store.recordTriageAttempt(
+          task.id,
+          fingerprintBlocker(`review: ${result.notes}`),
+        );
+        this.store.enqueueMessage(
+          task.id,
+          "reviewer",
+          `Automatic review requested changes. Address exactly these findings:
+${result.notes}`,
+        );
+        this.emit(
+          this.store.appendEvent(
+            task.id,
+            runId,
+            "reviewer",
+            "retry",
+            `Review requested changes; queued the findings for one repair pass (${
+              latest.triageAttempts + 1
+            }/${workflow.authority.maxTriageRetries}).`,
+          ),
+        );
+        this.emit(
+          this.store.requestTransition(
+            task.id,
+            "ready",
+            "reviewer",
+            "Review findings queued; re-running the task to address them.",
+          ).event,
+        );
+        throw new TriageRetryError(
+          `Review requested changes on ${task.id}; retrying with the findings queued.`,
+        );
+      }
       this.store.updateTaskLoop(task.id, {
         phase: "blocked",
         currentGate: "review",
@@ -1507,6 +1580,53 @@ export class LoopForgeWorker {
       return this.store.getTask(task.id);
     }
 
+    // Attended sessions hold the merge when the evidence lists work only a human
+    // can verify; restarting the parked task merges it without re-running anything.
+    // PR-gate runs skip the hold: the open PR is already the parking spot.
+    if (this.runMode === "attended" && !pullRequest) {
+      const manual = listManualVerificationItems({ tasks: [this.store.getTask(task.id)] })[0];
+      if (manual) {
+        const prompt = [
+          "Review approved. Merge is held until you verify by hand:",
+          ...manual.notes.map((note) => `- ${note}`),
+          "When verified, restart this task and LoopForge merges it immediately.",
+        ].join("\n");
+        this.store.updateTaskLoop(task.id, {
+          phase: "reviewing",
+          currentGate: "manual-verification",
+          nextAction: "Verify the listed items by hand, then restart this task to merge.",
+          needsInputPrompt: prompt,
+        });
+        this.store.upsertAgentStatus({
+          taskId: task.id,
+          runId,
+          phase: "reviewing",
+          headline: "Merge held for manual verification.",
+          detail: manual.notes.join(" "),
+          risk: "needs_user",
+          needsInputPrompt: prompt,
+          interruptible: false,
+        });
+        this.emit(
+          this.store.appendEvent(
+            task.id,
+            runId,
+            "merger",
+            "hold",
+            `Attended mode: holding ${task.id} in Review until manual verification. Restart the task to merge.`,
+          ),
+        );
+        return this.store.getTask(task.id);
+      }
+    }
+    return await this.mergeApprovedTask(task, runId, pullRequest);
+  }
+
+  private async mergeApprovedTask(
+    task: Task,
+    runId: string,
+    pullRequest: PullRequestInfo | null,
+  ): Promise<Task> {
     this.emit(
       this.store.requestTransition(
         task.id,
@@ -1517,7 +1637,7 @@ export class LoopForgeWorker {
     );
     const output = pullRequest
       ? await this.pullRequestGate.merge(task, pullRequest)
-      : await this.mergeBranch(task.branchName);
+      : await this.mergeBranch(task.branchName!);
     this.store.updateTaskLoop(task.id, {
       phase: "reviewing",
       currentGate: "merge",
@@ -1783,9 +1903,10 @@ function buildWorkerPrompt(
   queuedMessages: QueuedMessage[],
   repairEvidence = "",
   strategy = "",
+  runMode: RunMode = "attended",
 ): string {
   const instructions = [
-    ["autonomy.md", PROMPTS["autonomy.md"]],
+    ["autonomy.md", autonomyContract(runMode)],
     ["constitution.md", PROMPTS["constitution.md"]],
     ["project.md", PROMPTS["project.md"]],
     ["engineering.md", PROMPTS["engineering.md"]],
@@ -1839,7 +1960,7 @@ ${task.workpad || "No workpad notes yet."}
 Rules:
 - Run as close as possible to normal Codex in this folder: respect the project AGENTS.md context above, local repo conventions, and the user's installed Codex environment and skills.
 - Read the generated context manifest before editing when it is present.
-- Use Codex-native subagents or delegation when they materially help with independent investigation, implementation, testing, or review without overlapping work.
+- Subagents are for short, scoped investigation or review only. Never spawn autonomous sibling threads, background workers, or delegate implementation to other agents: LoopForge owns scheduling and concurrency, and uncontrolled fan-out burns the user's tokens.
 - Work only in this assigned worktree.
 - Do not inspect or modify ${root}/.loopforge/board.sqlite or any LoopForge runtime state. The LoopForge daemon records board, workpad, status, and validation updates after your turn completes.
 - Make the implementation changes needed for this task.
@@ -1900,6 +2021,7 @@ function taskThreadOptions(root: string, task: Task): CodexSessionOptions {
     developerInstructions: [
       "You are a LoopForge task worker running as a child Codex thread.",
       "Work only in the assigned worktree.",
+      "Do not spawn other threads, workers, or delegated agents; LoopForge owns scheduling.",
       "Read the generated context manifest and project AGENTS.md before editing.",
       "Do not mutate LoopForge runtime database or .loopforge state directly.",
       "End with a compact handoff containing changed files, validation, decisions, risks, and follow-ups.",
@@ -1918,6 +2040,14 @@ function mainThreadDeveloperInstructions(root: string): string {
 
 function projectName(root: string): string {
   return root.split(/[\\/]/).filter(Boolean).at(-1) ?? "project";
+}
+
+// First substantive line of a verifier dump, skipping the verdict token itself.
+function firstFailureLine(notes: string): string {
+  const line = notes.split(/\r?\n/)
+    .map((entry) => entry.replace(/^[-*\s]+/, "").trim())
+    .find((entry) => entry && !/^VERIFICATION_(FAILED|PASSED)\b/i.test(entry) && entry.length > 8);
+  return line ?? "see validation for details.";
 }
 
 function shortName(value: string, max: number): string {

@@ -1,6 +1,21 @@
 // Shared pseudo-autonomous operating contract. Injected into every agent prompt
 // (worker, test engineer, triage, reviewer) so stopping for input stays the
 // system's last resort during unattended runs.
+export type RunMode = "attended" | "unattended";
+
+export function autonomyContract(mode: RunMode): string {
+  const modeLine = mode === "unattended"
+    ? `Run mode: UNATTENDED. The user started a timed multi-hour run and is away. Nobody will
+answer questions, and a stalled task wastes the whole window. Decide, document, and deliver
+merge-ready best-effort work with honest notes.`
+    : `Run mode: ATTENDED. The user is reachable for genuinely high-value decisions, but still
+bring work to a decision-ready state before asking: finish everything autonomous first, then
+ask one prepared question.`;
+  return `${AUTONOMY_CONTRACT}
+${modeLine}
+`;
+}
+
 export const AUTONOMY_CONTRACT = `# Autonomous Operation
 
 You are running inside LoopForge, a pseudo-autonomous orchestration system. The human overseer

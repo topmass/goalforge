@@ -1,5 +1,5 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
-import { AUTONOMY_CONTRACT } from "../board/prompts.ts";
+import { autonomyContract, RunMode } from "../board/prompts.ts";
 import { extractVerificationVerdictToken } from "../board/validation_evidence.ts";
 import { CodexSession, CodexTurnResult } from "./codex_app_server.ts";
 
@@ -12,6 +12,7 @@ export interface TurnRunner {
 
 export interface GoalTestEngineerOptions {
   onEvent?: (event: ActivityEventInput) => void;
+  runMode?: RunMode;
 }
 
 export interface VerificationResult {
@@ -48,6 +49,7 @@ export class GoalTestEngineer {
         this.projectMemory,
         this.workflowInstructions,
         this.verificationGates,
+        this.options.runMode ?? "attended",
       ),
     });
   }
@@ -59,10 +61,11 @@ function buildTestPrompt(
   projectMemory: string,
   workflowInstructions: string,
   verificationGates: string,
+  runMode: RunMode,
 ): string {
   return `You are the LoopForge test engineer for one local coding task.
 
-${AUTONOMY_CONTRACT}
+${autonomyContract(runMode)}
 Project AGENTS.md context from the original folder:
 ${projectInstructions}
 

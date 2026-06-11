@@ -1,4 +1,5 @@
 import { ActivityEventInput, Task } from "../board/types.ts";
+import type { RunMode } from "../board/prompts.ts";
 import { CodexClient } from "./codex_app_server.ts";
 import { createAgentClient } from "./agent_backend.ts";
 import { collectAgentsInstructions } from "./project_context.ts";
@@ -9,6 +10,7 @@ import { readWorkflow } from "../workflow/workflow.ts";
 
 export interface GoalReviewerOptions {
   onEvent?: (event: ActivityEventInput) => void;
+  runMode?: RunMode;
   createCodexClient?: (
     onEvent: (event: ActivityEventInput) => void,
   ) => CodexClient;
@@ -66,6 +68,7 @@ export class GoalReviewer {
         projectInstructions,
         projectMemory,
         workflow.instructions,
+        this.options.runMode ?? "attended",
       );
       // Transient transport drops can end a turn with no captured text.
       // Retry the review turn in place before failing the whole task attempt.
@@ -102,6 +105,7 @@ function buildReviewPrompt(
   projectInstructions: string,
   projectMemory: string,
   workflowInstructions: string,
+  runMode: RunMode,
 ): string {
   return `You are the LoopForge reviewer for one local coding task.
 
@@ -133,8 +137,8 @@ Review rules:
 - Start your final answer with exactly APPROVED or CHANGES_REQUESTED.
 - Include concrete findings, missing validation, or remaining risks.
 - Keep the review scoped to this task.
-- LoopForge runs pseudo-autonomously; judge outcomes, not style. Criteria that need the
-  running app or manual QA and are honestly recorded in the evidence as
+- LoopForge runs pseudo-autonomously (${runMode} mode); judge outcomes, not style. Criteria
+  that need the running app or manual QA and are honestly recorded in the evidence as
   "needs manual verification" are not grounds for CHANGES_REQUESTED when the in-repo
   evidence covers everything else.
 `;

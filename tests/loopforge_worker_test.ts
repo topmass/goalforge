@@ -163,6 +163,10 @@ Deno.test("worker resumes blocked task thread for continuation turns", async () 
   const prompts: string[] = [];
   try {
     store.initProject();
+    await Deno.writeTextFile(
+      `${root}/WORKFLOW.md`,
+      "---\nversion: 1\nauthority:\n  publish: true\n  max_triage_retries: 0\n---\n# Test workflow\n",
+    );
     const { task } = store.createGoal("Continue reviewed work");
     const worker = new LoopForgeWorker(root, store, {
       createCodexClient: (onEvent) => new ChangesRequestedCodexClient(onEvent, resumed, prompts),
@@ -606,7 +610,10 @@ Deno.test("worker blocks when verification repair budget is exhausted", async ()
     assertEquals(updated.loopPhase, "blocked");
     assertEquals(updated.currentGate, "needs-input");
     assertStringIncludes(updated.needsInputPrompt ?? "", "Verification failed after 1 attempt");
-    assertStringIncludes(updated.needsInputPrompt ?? "", "VERIFICATION_FAILED");
+    assertStringIncludes(updated.needsInputPrompt ?? "", "Latest failure:");
+    assertStringIncludes(updated.needsInputPrompt ?? "", "Required behavior is still missing");
+    // The concise prompt points at the full dump, which stays in the verification summary.
+    assertStringIncludes(updated.verificationSummary, "VERIFICATION_FAILED");
   } finally {
     store.close();
     await Deno.remove(root, { recursive: true });
@@ -1074,7 +1081,7 @@ class TestCodexClient implements CodexClient {
     }
 
     assertStringIncludes(_input.prompt, "Current LoopForge board memory");
-    assertStringIncludes(_input.prompt, "Codex-native subagents");
+    assertStringIncludes(_input.prompt, "LoopForge owns scheduling and concurrency");
     assertStringIncludes(_input.prompt, "Repo WORKFLOW.md instructions");
     const taskId = _input.title.split(":")[0].toLowerCase();
     await Deno.writeTextFile(
@@ -1172,6 +1179,77 @@ class ChangesRequestedCodexClient extends TestCodexClient {
       return {
         threadId: session.threadId,
         turnId: "turn-review-test",
+        status: "completed",
+        completed: true,
+      };
+    }
+    return await super.runTurn(session, input);
+  }
+}
+
+class ReviewRetryThenApproveCodexClient extends TestCodexClient {
+  constructor(
+    onEvent: ConstructorParameters<typeof TestCodexClient>[0],
+    readonly seenPrompts: string[],
+    // Shared across client instances: the worker creates a fresh client per attempt.
+    readonly counters: { reviews: number },
+  ) {
+    super(onEvent, [], seenPrompts);
+  }
+
+  override async runTurn(
+    session: CodexSession,
+    input: CodexTurnInput,
+  ): Promise<CodexTurnResult> {
+    if (input.title.endsWith(": review")) {
+      this.counters.reviews++;
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: this.counters.reviews === 1
+          ? "CHANGES_REQUESTED\n- Rename the helper to match repo conventions."
+          : "APPROVED\n- Findings addressed.",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: `turn-review-${this.counters.reviews}`,
+        status: "completed",
+        completed: true,
+      };
+    }
+    return await super.runTurn(session, input);
+  }
+}
+
+class ManualVerificationCodexClient extends TestCodexClient {
+  constructor(
+    onEvent: ConstructorParameters<typeof TestCodexClient>[0],
+    readonly seenPrompts: string[] = [],
+  ) {
+    super(onEvent, [], seenPrompts);
+  }
+
+  override async runTurn(
+    session: CodexSession,
+    input: CodexTurnInput,
+  ): Promise<CodexTurnResult> {
+    if (input.title.endsWith(": test-engineer")) {
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: [
+          "VERIFICATION_PASSED",
+          "- deno check: passed in the worktree.",
+          "Remaining risks: needs manual verification: confirm the dialog renders in-app.",
+        ].join("\n"),
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "turn-test-engineer",
         status: "completed",
         completed: true,
       };
@@ -1506,3 +1584,91 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+Deno.test("review findings trigger one bounded repair pass before blocking", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const prompts: string[] = [];
+  const events: string[] = [];
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Address review findings automatically");
+    const counters = { reviews: 0 };
+    const worker = new LoopForgeWorker(root, store, {
+      onEvent: (event) => events.push(`${event.role}/${event.kind}: ${event.message}`),
+      createCodexClient: (onEvent) =>
+        new ReviewRetryThenApproveCodexClient(onEvent, prompts, counters),
+    });
+    const updated = await worker.runTask(task.id);
+    assertEquals(updated.status, "done");
+    assert(prompts.some((prompt) => prompt.includes("Address exactly these findings")));
+    assert(prompts.some((prompt) => prompt.includes("Rename the helper")));
+    assert(events.some((line) => line.includes("reviewer/retry")));
+    assertEquals(store.getTask(task.id).triageAttempts, 1);
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("attended mode holds unverifiable work in Review and restart merges it", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const prompts: string[] = [];
+  const events: string[] = [];
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Ship the dialog change");
+    const worker = new LoopForgeWorker(root, store, {
+      onEvent: (event) => events.push(`${event.role}/${event.kind}: ${event.message}`),
+      createCodexClient: (onEvent) => new ManualVerificationCodexClient(onEvent, prompts),
+    });
+    const held = await worker.runTask(task.id);
+    assertEquals(held.status, "review");
+    assertEquals(held.currentGate, "manual-verification");
+    assertStringIncludes(held.needsInputPrompt ?? "", "needs manual verification");
+    assertStringIncludes(held.needsInputPrompt ?? "", "restart this task");
+    assert(events.some((line) => line.includes("merger/hold")));
+    assert(prompts.some((prompt) => prompt.includes("Run mode: ATTENDED")));
+
+    const engineerTurnsBefore = prompts.filter((p) => p.includes("test engineer")).length;
+    const merged = await worker.runTask(task.id);
+    assertEquals(merged.status, "done");
+    assertEquals(
+      prompts.filter((p) => p.includes("test engineer")).length,
+      engineerTurnsBefore,
+    );
+    assert(events.some((line) => line.includes("merger/resume")));
+    assertEquals(store.getGoal(task.goalId).status, "closed");
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("unattended mode merges unverifiable work with the note recorded", async () => {
+  const root = Deno.makeTempDirSync();
+  await seedGitRepo(root);
+
+  const store = new BoardStore(root);
+  const prompts: string[] = [];
+  try {
+    store.initProject();
+    const { task } = store.createGoal("Ship the dialog change overnight");
+    const worker = new LoopForgeWorker(root, store, {
+      runMode: "unattended",
+      createCodexClient: (onEvent) => new ManualVerificationCodexClient(onEvent, prompts),
+    });
+    const updated = await worker.runTask(task.id);
+    assertEquals(updated.status, "done");
+    assertStringIncludes(updated.validation, "needs manual verification");
+    assert(prompts.some((prompt) => prompt.includes("Run mode: UNATTENDED")));
+  } finally {
+    store.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});

@@ -11,6 +11,7 @@ import { emptyFlowScene, pulseTargetForEvent, updateFlowScene } from "./choreogr
 import { FlowField } from "./flow_field.ts";
 import { formatHealthLines } from "../board/status_lines.ts";
 import { parseValidationEvidence } from "../board/validation_evidence.ts";
+import { listManualVerificationItems } from "../board/status_lines.ts";
 import { activityLine, displayEvents } from "./activity.ts";
 import { decodeControlKey, decodePromptInput, normalizePromptText } from "./input.ts";
 import { parseResetMemoryConfirmation } from "./memory_controls.ts";
@@ -1767,6 +1768,12 @@ function mainThreadLines(): string[] {
     state.runtime?.scout?.enabled
       ? `Scout: ${state.runtime.scout.backend} (${state.board.ideas.length} ideas pending)`
       : "Scout: off",
+    (() => {
+      const manual = listManualVerificationItems(state.board);
+      return manual.length
+        ? `Verify by hand: ${manual.length} task${manual.length === 1 ? "" : "s"} (see standup)`
+        : "Verify by hand: none pending";
+    })(),
     "",
     `Memory thread: ${state.board.projectState.mainThreadId ?? "not started"}`,
     `Created: ${state.board.projectState.mainThreadCreatedAt ?? "not started"}`,

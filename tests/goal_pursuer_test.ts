@@ -127,6 +127,13 @@ Deno.test("pursue loop replans from failing probes until the goal closes", async
     assertEquals(store.getGoal(goal.id).status, "closed");
     assertEquals(store.listProbes(goal.id)[0].lastStatus, "passed");
     assert(events.some((line) => line.includes("pursuer/replan")));
+    assert(events.some((line) => line.includes("pursuer/baseline")));
+    const tagOutput = await new Deno.Command("git", {
+      args: ["tag", "-l", "loopforge/run-*"],
+      cwd: root,
+      stdout: "piped",
+    }).output();
+    assert(new TextDecoder().decode(tagOutput.stdout).includes("loopforge/run-"));
     assert(events.some((line) => line.includes("Win conditions 1/1")));
   } finally {
     store.close();

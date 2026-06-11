@@ -532,6 +532,9 @@ export class BoardStore {
     const task = this.getTask(run.taskId);
     if (
       !(status === "completed" && task.loopPhase === "done") &&
+      // A completed run that parked its task for manual verification keeps the
+      // hold state; rewriting it would erase the checklist and the resume gate.
+      !(status === "completed" && task.currentGate === "manual-verification") &&
       !(status === "failed" && task.loopPhase === "blocked" && task.needsInputPrompt)
     ) {
       this.updateTaskLoop(run.taskId, {

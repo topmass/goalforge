@@ -71,6 +71,14 @@ twice triggers escalation or a clean stop with one clear ask, and lessons learne
 every future prompt. In the morning, `loopforge standup` tells you what shipped with proof and
 exactly what needs you.
 
+Timed runs are unattended by design: every pursue run first tags the starting commit
+(`loopforge/run-<stamp>`), so one `git reset --hard` discards the whole night if you want it gone.
+Work an agent could not prove inside the repo merges anyway with an honest note and lands on the
+standup's "Needs manual verification" checklist instead of stalling the queue. In attended sessions
+the same work is held in Review until you check it by hand - restarting the task merges it
+instantly. When something truly does need you, the blocker arrives as a prepared decision brief
+(what it is, what was already done, a recommendation, and your exact options), never a raw log dump.
+
 ### Rescue model
 
 Arm a stronger model as the on-call senior engineer: when the working model fails verification N

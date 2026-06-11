@@ -16,6 +16,7 @@ import { parsePlannerResponse } from "./goal_planner.ts";
 import { probeLights, runGoalProbes } from "./goal_probes.ts";
 import { runScout } from "./goal_scout.ts";
 import { LoopForgeWorker } from "./loopforge_worker.ts";
+import { runCommand } from "./git_utils.ts";
 import { buildProjectMemory } from "./project_memory.ts";
 import { shouldRecordActivity } from "./activity_filter.ts";
 
@@ -52,6 +53,7 @@ export class GoalPursuer {
 
   async pursue(goalId: string): Promise<PursueReport> {
     const deadline = Date.now() + (this.options.hours ?? 2) * 3_600_000;
+    await this.ensureRunBaseline(goalId);
     const maxIterations = this.options.maxIterations ?? 24;
     let lastFailureFingerprint = "";
     let escalated = false;
@@ -191,6 +193,7 @@ export class GoalPursuer {
     const worker = new LoopForgeWorker(this.root, this.store, {
       onEvent: this.options.onEvent,
       createCodexClient: factory,
+      runMode: "unattended",
     });
     let ranAny = false;
     while (Date.now() < deadline) {
@@ -269,6 +272,30 @@ export class GoalPursuer {
       return false;
     } finally {
       await codex.stop().catch(() => {});
+    }
+  }
+
+  // One tag per pursue invocation marks the pre-run commit, so a whole
+  // unattended night of auto-merges can be discarded with a single reset.
+  private baselineTag: string | null = null;
+
+  private async ensureRunBaseline(goalId: string): Promise<void> {
+    if (this.baselineTag !== null) {
+      return;
+    }
+    this.baselineTag = "";
+    try {
+      const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      const tag = `loopforge/run-${stamp.slice(0, 8)}-${stamp.slice(8, 14)}`;
+      await runCommand(this.root, ["git", "tag", tag]);
+      this.baselineTag = tag;
+      this.emit(
+        goalId,
+        "baseline",
+        `Tagged run baseline ${tag}. Discard everything from this run with: git reset --hard ${tag}`,
+      );
+    } catch {
+      // Baselines are best effort; a non-repo or tag clash never blocks the run.
     }
   }
 

@@ -1,9 +1,10 @@
-import { assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { BoardStore } from "../src/board/store.ts";
 import {
   formatGoalLines,
   formatHealthLines,
   formatStatusLines,
+  listManualVerificationItems,
 } from "../src/board/status_lines.ts";
 
 Deno.test("status lines include active goal verdict and task counts", () => {
@@ -173,4 +174,39 @@ Deno.test("health lines recommend evidence repair before done cleanup", () => {
     store.close();
     Deno.removeSync(root, { recursive: true });
   }
+});
+
+Deno.test("manual verification items collect notes from finished tasks only", () => {
+  const items = listManualVerificationItems({
+    tasks: [
+      {
+        id: "TASK-1",
+        title: "Ship dialog",
+        status: "done",
+        validation:
+          "VERIFICATION_PASSED\n- checks ran.\nRemaining risks: needs manual verification: confirm the dialog renders.",
+        handoffSummary: "- Needs manual verification: confirm the dialog renders.",
+        verificationSummary: "",
+      },
+      {
+        id: "TASK-2",
+        title: "Still working",
+        status: "in_progress",
+        validation: "needs manual verification: not yet",
+        handoffSummary: "",
+        verificationSummary: "",
+      },
+      {
+        id: "TASK-3",
+        title: "Fully proven",
+        status: "done",
+        validation: "VERIFICATION_PASSED\n- everything covered in-repo.",
+        handoffSummary: "",
+        verificationSummary: "",
+      },
+    ],
+  });
+  assertEquals(items.length, 1);
+  assertEquals(items[0].taskId, "TASK-1");
+  assertEquals(items[0].notes.length, 2);
 });
