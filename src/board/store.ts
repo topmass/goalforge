@@ -336,7 +336,7 @@ export class BoardStore {
     return goalFromRow(row);
   }
 
-  closeGoal(goalId: string, summary = ""): { goal: Goal; event: ActivityEvent } {
+  closeGoal(goalId: string, summary = "", options: { force?: boolean } = {}): { goal: Goal; event: ActivityEvent } {
     const goal = this.getGoal(goalId);
     if (goal.status === "closed") {
       const event = this.appendEvent(
@@ -349,7 +349,9 @@ export class BoardStore {
       return { goal, event };
     }
     const progress = summarizeGoalProgress(this.getBoard(), goalId);
-    if (!progress?.completionReady) {
+    // The goal loop closes through its own deterministic gate (win-condition
+    // probes), not the relay's task-evidence contract; force skips that check.
+    if (!options.force && !progress?.completionReady) {
       throw new Error(
         `${goalId} is not ready to close: ${
           progress?.completionReason ?? "goal progress is unavailable"
@@ -357,7 +359,9 @@ export class BoardStore {
       );
     }
     const closureSummary = summary.trim() ||
-      `${progress.done}/${progress.total} tasks done. ${progress.completionReason}`;
+      `${progress?.done ?? 0}/${progress?.total ?? 0} tasks done. ${
+        progress?.completionReason ?? "Closed by the goal loop."
+      }`;
     const now = timestamp();
     this.db.prepare(
       "UPDATE goals SET status = 'closed', closed_at = ?, closure_summary = ? WHERE id = ?",
@@ -412,7 +416,7 @@ export class BoardStore {
   findDispatchableTask(): Task | null {
     const row = this.db.prepare(`
       SELECT * FROM tasks
-      WHERE status IN ('ready', 'inbox')
+      WHERE status IN ('ready', 'inbox') AND kind != 'loop'
       ORDER BY priority DESC, created_at ASC
     `).all() as SqlRow[];
     return row.map(taskFromRow).find((task) =>
@@ -423,7 +427,7 @@ export class BoardStore {
   listDispatchableTasks(limit = 20): Task[] {
     return (this.db.prepare(`
       SELECT * FROM tasks
-      WHERE status IN ('ready', 'inbox')
+      WHERE status IN ('ready', 'inbox') AND kind != 'loop'
       ORDER BY priority DESC, created_at ASC
     `).all() as SqlRow[]).map(taskFromRow).filter((task) =>
       this.dependenciesDone(task) && !this.hasUnresolvedConflict(task)
@@ -772,6 +776,187 @@ export class BoardStore {
         id,
       );
     });
+  }
+
+  setGoalLoopState(
+    goalId: string,
+    state: { threadId?: string | null; branch?: string | null; worktree?: string | null },
+  ): Goal {
+    const goal = this.getGoal(goalId);
+    this.db.prepare(
+      "UPDATE goals SET loop_thread_id = ?, loop_branch = ?, loop_worktree = ? WHERE id = ?",
+    ).run(
+      state.threadId !== undefined ? state.threadId : goal.loopThreadId,
+      state.branch !== undefined ? state.branch : goal.loopBranch,
+      state.worktree !== undefined ? state.worktree : goal.loopWorktree,
+      goalId,
+    );
+    return this.getGoal(goalId);
+  }
+
+  // Mirror the loop owner's LOOP_PLAN.md checklist onto the board as kind=loop
+  // tasks: pure visualization, never dispatchable, status follows the file.
+  syncLoopPlanTasks(
+    goalId: string,
+    items: Array<{ title: string; status: "todo" | "doing" | "done"; note: string }>,
+  ): ActivityEvent[] {
+    this.getGoal(goalId);
+    const events: ActivityEvent[] = [];
+    const existing = (this.db.prepare(
+      "SELECT * FROM tasks WHERE goal_id = ? AND kind = 'loop'",
+    ).all(goalId) as SqlRow[]).map(taskFromRow);
+    const byTitle = new Map(existing.map((task) => [normalizeTitle(task.title), task]));
+    const now = timestamp();
+    for (const item of items) {
+      const status = item.status === "done"
+        ? "done"
+        : item.status === "doing"
+        ? "in_progress"
+        : "ready";
+      const current = byTitle.get(normalizeTitle(item.title));
+      if (!current) {
+        const taskId = this.nextHumanId("TASK", "tasks");
+        this.db.prepare(`
+          INSERT INTO tasks (
+            id, goal_id, title, description, status, kind, ops_action, priority, branch_name, worktree_path,
+            thread_id, dependency_ids_json, risk_level, verification_plan, loop_phase, loop_attempt,
+            current_gate, verification_summary, next_action, needs_input_prompt, supervisor_decision, workpad,
+            acceptance_criteria, validation, blocked_reason, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          taskId,
+          goalId,
+          normalizeTitle(item.title),
+          item.note,
+          status,
+          "loop",
+          null,
+          100,
+          null,
+          null,
+          null,
+          "[]",
+          "low",
+          "",
+          status === "done" ? "done" : status === "in_progress" ? "working" : "queued",
+          0,
+          "loop-plan",
+          "",
+          "Worked by the goal loop; mirrored from LOOP_PLAN.md.",
+          null,
+          "",
+          "Mirrored from LOOP_PLAN.md.",
+          "",
+          "",
+          null,
+          now,
+          now,
+        );
+        events.push(
+          this.appendEvent(taskId, null, "loop", "plan", `${goalId} plan item: ${item.title}`),
+        );
+        continue;
+      }
+      if (current.status !== status || current.description !== item.note) {
+        this.db.prepare(
+          "UPDATE tasks SET status = ?, description = ?, loop_phase = ?, updated_at = ? WHERE id = ?",
+        ).run(
+          status,
+          item.note,
+          status === "done" ? "done" : status === "in_progress" ? "working" : "queued",
+          now,
+          current.id,
+        );
+        if (current.status !== status) {
+          events.push(
+            this.appendEvent(
+              current.id,
+              null,
+              "loop",
+              "plan",
+              `${current.id}: ${item.title} -> ${status === "in_progress" ? "working" : status}.`,
+            ),
+          );
+        }
+      }
+    }
+    return events;
+  }
+
+  // The goal loop's attended hold: one ordinary code task carrying the goal
+  // branch, parked at the manual-verification gate so the existing
+  // restart-to-merge shortcut lands the whole loop's work.
+  createLoopMergeHoldTask(
+    goalId: string,
+    branchName: string,
+    needsInputPrompt: string,
+    validation: string,
+  ): Task {
+    const goal = this.getGoal(goalId);
+    const taskId = this.nextHumanId("TASK", "tasks");
+    const now = timestamp();
+    this.db.prepare(`
+      INSERT INTO tasks (
+        id, goal_id, title, description, status, kind, ops_action, priority, branch_name, worktree_path,
+        thread_id, dependency_ids_json, risk_level, verification_plan, loop_phase, loop_attempt,
+        current_gate, verification_summary, next_action, needs_input_prompt, supervisor_decision, workpad,
+        acceptance_criteria, validation, blocked_reason, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      taskId,
+      goalId,
+      `Merge ${goalId} loop work`,
+      `Loop work for "${goal.text.slice(0, 120)}" is complete and verified; merge ${branchName}.`,
+      "review",
+      "code",
+      null,
+      200,
+      branchName,
+      goal.loopWorktree,
+      null,
+      "[]",
+      "low",
+      "",
+      "reviewing",
+      0,
+      "manual-verification",
+      validation,
+      "Verify the listed items by hand, then restart this task to merge.",
+      needsInputPrompt,
+      "",
+      "Created by the goal loop completion gate.",
+      "",
+      validation,
+      null,
+      now,
+      now,
+    );
+    this.appendEvent(
+      taskId,
+      null,
+      "loop",
+      "hold",
+      `${goalId} loop work parked in Review as ${taskId}; restart it to merge ${branchName}.`,
+    );
+    return this.getTask(taskId);
+  }
+
+  // When the goal loop merges a goal, any relay-intake tasks it carried are
+  // superseded: the work shipped through the loop branch, not through them.
+  settleGoalTasksForLoop(goalId: string, reason: string): ActivityEvent[] {
+    const events: ActivityEvent[] = [];
+    const open = (this.db.prepare(
+      "SELECT * FROM tasks WHERE goal_id = ? AND kind != 'loop' AND status != 'done'",
+    ).all() as SqlRow[]).map(taskFromRow);
+    const now = timestamp();
+    for (const task of open) {
+      this.db.prepare(
+        `UPDATE tasks SET status = 'done', loop_phase = 'done', current_gate = 'complete',
+         next_action = ?, needs_input_prompt = NULL, updated_at = ? WHERE id = ?`,
+      ).run(reason, now, task.id);
+      events.push(this.appendEvent(task.id, null, "loop", "settle", `${task.id}: ${reason}`));
+    }
+    return events;
   }
 
   setTaskDependencies(taskId: string, dependencyIds: string[]): Task {
@@ -1425,6 +1610,9 @@ export class BoardStore {
     this.ensureColumn("goals", "status", "TEXT NOT NULL DEFAULT 'open'");
     this.ensureColumn("goals", "closed_at", "TEXT");
     this.ensureColumn("goals", "closure_summary", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("goals", "loop_thread_id", "TEXT");
+    this.ensureColumn("goals", "loop_branch", "TEXT");
+    this.ensureColumn("goals", "loop_worktree", "TEXT");
     this.ensureColumn("tasks", "thread_id", "TEXT");
     this.ensureColumn("tasks", "active_turn_id", "TEXT");
     this.ensureColumn("tasks", "context_manifest_path", "TEXT");
@@ -1819,6 +2007,9 @@ function goalFromRow(row: SqlRow): Goal {
     status: row.status === "closed" ? "closed" : "open",
     closedAt: nullableString(row.closed_at),
     closureSummary: String(row.closure_summary ?? ""),
+    loopThreadId: nullableString(row.loop_thread_id),
+    loopBranch: nullableString(row.loop_branch),
+    loopWorktree: nullableString(row.loop_worktree),
     createdAt: String(row.created_at),
   };
 }
@@ -1830,7 +2021,7 @@ function taskFromRow(row: SqlRow): Task {
     title: String(row.title),
     description: String(row.description),
     status: String(row.status) as TaskStatus,
-    kind: row.kind === "ops" ? "ops" : "code",
+    kind: row.kind === "ops" ? "ops" : row.kind === "loop" ? "loop" : "code",
     opsAction: normalizeOpsAction(row.ops_action),
     priority: Number(row.priority),
     branchName: nullableString(row.branch_name),

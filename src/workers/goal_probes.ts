@@ -22,11 +22,12 @@ export async function runGoalProbes(
   root: string,
   store: BoardStore,
   goalId: string,
+  cwd = root,
 ): Promise<ProbeSummary> {
   const probes = store.listProbes(goalId);
   const results: ProbeRunResult[] = [];
   for (const probe of probes) {
-    const result = await runProbeCommand(root, probe);
+    const result = await runProbeCommand(cwd, probe);
     store.recordProbeResult(probe.id, result.passed ? "passed" : "failed", result.output);
     results.push({ ...result, probe: store.listProbes(goalId).find((p) => p.id === probe.id)! });
   }

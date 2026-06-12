@@ -8,6 +8,14 @@ export interface WorktreeAssignment {
   created: boolean;
 }
 
+export async function prepareGoalWorktree(
+  root: string,
+  goalId: string,
+  configuredWorktreesDir = worktreesPath(root),
+): Promise<WorktreeAssignment> {
+  return await prepareTaskWorktree(root, { id: goalId } as Task, configuredWorktreesDir);
+}
+
 export async function prepareTaskWorktree(
   root: string,
   task: Task,

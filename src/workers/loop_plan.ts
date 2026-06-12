@@ -1,0 +1,80 @@
+// The goal-loop plan contract: the loop owner maintains LOOP_PLAN.md (a plain
+// markdown checklist) at its worktree root. The file on disk is the source of
+// truth - ralph-style - so a lost thread resumes from the repo, and LoopForge
+// mirrors the checklist onto the board after every turn for live visualization.
+
+export const LOOP_PLAN_FILE = "LOOP_PLAN.md";
+export const LOOP_COMPLETE_TOKEN = "LOOP_COMPLETE";
+export const LOOP_BLOCKED_TOKEN = "LOOP_BLOCKED";
+
+export type LoopPlanStatus = "todo" | "doing" | "done";
+
+export interface LoopPlanItem {
+  title: string;
+  status: LoopPlanStatus;
+  note: string;
+}
+
+// Lines like:
+//   - [ ] Add the config gate -- needs ConfigEntry wiring
+//   - [~] Patch the rebuy handler
+//   - [x] Fix soil planting -- proven by `dotnet build` + grep
+export function parseLoopPlan(markdown: string): LoopPlanItem[] {
+  const items: LoopPlanItem[] = [];
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const match = rawLine.match(/^\s*[-*]\s*\[([ xX~])\]\s+(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const status: LoopPlanStatus = match[1] === "~"
+      ? "doing"
+      : match[1] === " "
+      ? "todo"
+      : "done";
+    const body = match[2].trim();
+    const separator = body.indexOf(" -- ");
+    const title = (separator >= 0 ? body.slice(0, separator) : body).trim();
+    const note = separator >= 0 ? body.slice(separator + 4).trim() : "";
+    if (title) {
+      items.push({ title, status, note });
+    }
+  }
+  return items;
+}
+
+export function loopPlanComplete(items: LoopPlanItem[]): boolean {
+  return items.length > 0 && items.every((item) => item.status === "done");
+}
+
+// Plan text + worktree commit make a cheap stall fingerprint: if neither moved
+// across iterations, the loop is spinning.
+export function loopPlanFingerprint(items: LoopPlanItem[], headCommit: string): string {
+  return `${headCommit}:${items.map((item) => `${item.status}|${item.title}`).join(";")}`;
+}
+
+export function extractBlockedAsk(responseText: string): string | null {
+  const match = responseText.match(/^LOOP_BLOCKED:?\s*(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+export function signalsComplete(responseText: string): boolean {
+  return new RegExp(`^${LOOP_COMPLETE_TOKEN}\\b`, "m").test(responseText.trim());
+}
+
+export function loopPlanContract(): string {
+  return `Plan contract:
+- Maintain ${LOOP_PLAN_FILE} at the worktree root: a markdown checklist where each line is
+  "- [ ] item" (todo), "- [~] item" (in progress), or "- [x] item -- one-line evidence" (done).
+- If the file does not exist yet, create it now: plan this goal into 3-10 concrete items,
+  each completable in one focused working session.
+- Work ONE item per turn (finish a small one and start the next if time allows). Run real
+  commands to verify your work before checking an item off; put the proof in the evidence note.
+- Record decisions, discoveries, and anything the next iteration must know directly in
+  ${LOOP_PLAN_FILE} under the relevant item. This file and the repo are your memory.
+- Do not create commits; LoopForge commits the worktree after every turn.
+- When every item is checked and you believe the win conditions pass, end your reply with the
+  single line ${LOOP_COMPLETE_TOKEN}.
+- Only when truly blocked by an absolute blocker (credentials, third-party access, destructive
+  approval, or a scope-changing product decision), end with:
+  ${LOOP_BLOCKED_TOKEN}: <one prepared sentence: the exact decision or item you need>`;
+}

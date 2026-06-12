@@ -26,7 +26,7 @@ export type TaskLoopPhase = typeof TASK_LOOP_PHASES[number];
 
 export type TaskRiskLevel = "low" | "medium" | "high";
 
-export type TaskKind = "code" | "ops";
+export type TaskKind = "code" | "ops" | "loop";
 
 export const OPS_ACTIONS = ["publish"] as const;
 
@@ -49,6 +49,9 @@ export interface Goal {
   status: "open" | "closed";
   closedAt: string | null;
   closureSummary: string;
+  loopThreadId: string | null;
+  loopBranch: string | null;
+  loopWorktree: string | null;
   createdAt: string;
 }
 

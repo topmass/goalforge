@@ -431,6 +431,11 @@ export class LoopForgeWorker {
     if (task.kind === "ops") {
       return await this.runOpsTaskAttempt(task.id);
     }
+    if (task.kind === "loop") {
+      throw new Error(
+        `${task.id} is a goal-loop plan mirror; the goal loop works it. Run the goal loop instead.`,
+      );
+    }
     // A task held in Review for manual verification resumes straight to merge:
     // restarting it is the user's confirmation, not a request to redo the work.
     if (

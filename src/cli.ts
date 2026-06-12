@@ -14,6 +14,7 @@ import { ensureGitRepository, gitMergeBranch } from "./workers/git_utils.ts";
 import { GoalPlanner } from "./workers/goal_planner.ts";
 import { runScout } from "./workers/goal_scout.ts";
 import { GoalPursuer } from "./workers/goal_pursuer.ts";
+import { GoalLoopRunner } from "./workers/goal_loop.ts";
 import { formatProbeLines, probeLights, runGoalProbes } from "./workers/goal_probes.ts";
 import { GoalReviewer } from "./workers/goal_reviewer.ts";
 import { LoopForgeWorker } from "./workers/loopforge_worker.ts";
@@ -121,6 +122,9 @@ try {
       break;
     case "check":
       await checkCommand(args);
+      break;
+    case "loop":
+      await loopCommand(args);
       break;
     case "pursue":
       await pursueCommand(args);
@@ -436,6 +440,47 @@ async function checkCommand(args: string[]): Promise<void> {
         probeLights(store.listProbes(goalId))
       }`,
     );
+  } finally {
+    store.close();
+  }
+}
+
+async function loopCommand(args: string[]): Promise<void> {
+  const hoursIndex = args.indexOf("--hours");
+  const hours = hoursIndex >= 0 ? Number(args[hoursIndex + 1]) : undefined;
+  if (hoursIndex >= 0 && (!Number.isFinite(hours) || hours! <= 0)) {
+    throw new Error("A valid --hours value is required.");
+  }
+  const iterIndex = args.indexOf("--iterations");
+  const maxIterations = iterIndex >= 0 ? Number(args[iterIndex + 1]) : undefined;
+  const goalId = args.find((arg, index) =>
+    !arg.startsWith("-") && index !== hoursIndex + 1 && index !== iterIndex + 1
+  );
+  if (!goalId) {
+    throw new Error("Usage: loopforge loop GOAL-N [--hours H] [--iterations N]");
+  }
+  const store = new BoardStore(root);
+  try {
+    store.initProject();
+    await ensureGitRepository(root);
+    const runner = new GoalLoopRunner(root, store, {
+      hours,
+      maxIterations: maxIterations && Number.isInteger(maxIterations) && maxIterations > 0
+        ? maxIterations
+        : undefined,
+      onEvent: (event) => {
+        const task = event.taskId ?? "system";
+        console.log(`[${event.role}:${task}] ${event.kind} ${event.message}`);
+      },
+    });
+    const report = await runner.run(goalId.toUpperCase());
+    console.log("");
+    console.log(
+      `Loop ${report.outcome} after ${report.iterations} iteration${
+        report.iterations === 1 ? "" : "s"
+      }.`,
+    );
+    console.log(report.detail);
   } finally {
     store.close();
   }
@@ -1338,6 +1383,7 @@ Usage:
   loopforge status
   loopforge hooks [print | install claude | install codex]
   loopforge check [GOAL-ID]
+  loopforge loop GOAL-ID [--hours N] [--iterations N]   # one persistent agent owns the goal
   loopforge pursue [GOAL-ID | --all] [--hours N] [--iterations N] [--escalate codex]
   loopforge lesson ["text to remember"]
   loopforge scout                            # one scout pass: propose ideas now
