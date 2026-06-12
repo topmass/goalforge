@@ -1025,6 +1025,22 @@ function createFooterActionRows(): FooterAction[][] {
   if (goal?.completionReady) {
     primary.push({ label: "Close Goal", run: closeActiveGoal });
   }
+  const loopGoalId = selectedTask()?.goalId ??
+    state.board?.goals.find((candidate) => candidate.status === "open")?.id;
+  if (loopGoalId) {
+    primary.push({
+      label: "Loop Goal",
+      run: () =>
+        void runAction(
+          `Loop ${loopGoalId}`,
+          () => post(`/api/goals/${loopGoalId}/loop`, {}),
+          {
+            complete: () =>
+              `Goal loop started on ${loopGoalId}: one agent owns the goal; its plan mirrors here as it works.`,
+          },
+        ),
+    });
+  }
   const secondary: FooterAction[] = [
     {
       label: "Run Ready Tasks",

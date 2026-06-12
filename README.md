@@ -54,6 +54,25 @@ loopforge check                            # run the goal's win-condition probes
 loopforge standup                          # digest: shipped, blocked asks, win conditions
 ```
 
+## The goal loop: one agent owns the goal
+
+The goal loop is LoopForge's native take on Codex /goal and Claude's ralph loops, identical on
+every backend: one persistent agent owns the whole goal in its own worktree, plans it into
+LOOP_PLAN.md (a plain markdown checklist committed with the work, so a lost session resumes
+from disk), and iterates until everything is checked off. LoopForge stays the deterministic
+shell around it: it mirrors the checklist onto the board live, commits progress every turn,
+feeds failing win conditions back into the loop, and only merges and closes when the probes
+actually pass. Attended sessions hold the merge behind your manual-verification checklist;
+timed runs merge on a tagged baseline.
+
+```bash
+loopforge loop GOAL-1                 # attended: you gate the merge
+loopforge loop GOAL-1 --hours 4       # unattended: merge on green probes
+```
+
+In the TUI, select any task of a goal and press the **Loop Goal** button; the agent's plan
+items appear on the board as they're worked.
+
 ## Let it run overnight
 
 Goals get **win conditions**: executable probes the planner writes alongside the tasks (curl checks,

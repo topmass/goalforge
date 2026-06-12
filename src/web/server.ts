@@ -19,6 +19,7 @@ import { gitMergeBranch } from "../workers/git_utils.ts";
 import { GoalPlanner } from "../workers/goal_planner.ts";
 import { GoalPursuer } from "../workers/goal_pursuer.ts";
 import { runScout } from "../workers/goal_scout.ts";
+import { GoalLoopRunner } from "../workers/goal_loop.ts";
 import { runGoalProbes } from "../workers/goal_probes.ts";
 import { GoalReviewer } from "../workers/goal_reviewer.ts";
 import { LoopForgeWorker } from "../workers/loopforge_worker.ts";
@@ -63,6 +64,7 @@ export function startServer(
   let queueRunning = false;
   let pursueRunning = false;
   let scoutRunning = false;
+  let goalLoopRunning = false;
 
   const send = (client: Client, type: string, payload: unknown) => {
     try {
@@ -545,6 +547,36 @@ export function startServer(
           );
           broadcastBoard();
           return json({ idea, ...result }, 201);
+        }
+
+        const loopMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/loop$/);
+        if (loopMatch && request.method === "POST") {
+          if (goalLoopRunning) {
+            return json({ error: "A goal loop is already running." }, 409);
+          }
+          const goalId = decodeURIComponent(loopMatch[1]).toUpperCase();
+          store.getGoal(goalId);
+          const body = await readJson<{ hours?: number; iterations?: number }>(request);
+          goalLoopRunning = true;
+          queueMicrotask(() => {
+            const runner = new GoalLoopRunner(normalizedRoot, store, {
+              hours: typeof body.hours === "number" && body.hours > 0 ? body.hours : undefined,
+              maxIterations: typeof body.iterations === "number" && body.iterations > 0
+                ? Math.floor(body.iterations)
+                : undefined,
+              onEvent: broadcastActivity,
+              createCodexClient: options.createCodexClient,
+            });
+            runner.run(goalId).then(() => {
+              goalLoopRunning = false;
+              broadcastBoard();
+            }).catch((error) => {
+              goalLoopRunning = false;
+              const message = error instanceof Error ? error.message : String(error);
+              broadcast("error", { message });
+            });
+          });
+          return json({ ok: true, goalId, running: true });
         }
 
         if (url.pathname === "/api/scout/run" && request.method === "POST") {

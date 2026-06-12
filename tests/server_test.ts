@@ -738,3 +738,84 @@ Deno.test("finishing one task auto-continues the queue while work remains", asyn
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+class LoopStubClient implements CodexClient {
+  constructor(
+    private readonly onEvent: (
+      event: {
+        taskId: string | null;
+        runId: string | null;
+        role: string;
+        kind: string;
+        message: string;
+      },
+    ) => void,
+  ) {}
+
+  startSession(cwd: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId: "loop-thread", cwd });
+  }
+
+  resumeSession(cwd: string, threadId: string): Promise<CodexSession> {
+    return Promise.resolve({ threadId, cwd });
+  }
+
+  async runTurn(session: CodexSession, _input: CodexTurnInput): Promise<CodexTurnResult> {
+    await Deno.writeTextFile(
+      `${session.cwd}/LOOP_PLAN.md`,
+      "# Plan\n- [x] Ship the gadget -- wrote gadget.txt\n",
+    );
+    await Deno.writeTextFile(`${session.cwd}/gadget.txt`, "gadget\n");
+    this.onEvent({
+      taskId: null,
+      runId: null,
+      role: "codex",
+      kind: "agent",
+      message: "LOOP_COMPLETE",
+    });
+    return { threadId: session.threadId, turnId: "loop-turn", status: "completed", completed: true };
+  }
+
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+Deno.test("server runs a goal loop in the background until the goal closes", async () => {
+  const root = Deno.makeTempDirSync();
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["commit", "--allow-empty", "-m", "seed"]);
+  const seed = new BoardStore(root);
+  seed.initProject();
+  const { goal } = seed.createGoal("Ship the gadget");
+  seed.close();
+  const port = 49633 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new LoopStubClient(onEvent),
+  });
+  try {
+    const start = await fetch(`${server.url}/api/goals/${goal.id}/loop`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hours: 1 }),
+    });
+    assertEquals(start.ok, true);
+    for (let index = 0; index < 120; index++) {
+      const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+      const closed = board.goals.find((g: { id: string }) => g.id === goal.id)?.status === "closed";
+      const mirrored = board.tasks.some((task: { kind?: string; status: string }) =>
+        task.kind === "loop" && task.status === "done"
+      );
+      if (closed && mirrored) {
+        assertEquals(await Deno.readTextFile(`${root}/gadget.txt`), "gadget\n");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Goal loop did not close the goal through the server endpoint.");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
