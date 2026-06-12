@@ -4,6 +4,7 @@ import { summarizeGoalProgress } from "../src/board/goal_progress.ts";
 
 Deno.test("init creates local runtime files and prompt templates", () => {
   const root = Deno.makeTempDirSync();
+  new Deno.Command("git", { args: ["init", "-b", "main"], cwd: root }).outputSync();
   const store = new BoardStore(root);
   try {
     store.initProject();
@@ -11,8 +12,12 @@ Deno.test("init creates local runtime files and prompt templates", () => {
     assertEquals(Deno.statSync(`${root}/.loopforge/config.json`).isFile, true);
     assertEquals(Deno.statSync(`${root}/.loopforge/prompts/constitution.md`).isFile, true);
     assertEquals(Deno.statSync(`${root}/WORKFLOW.md`).isFile, true);
-    assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.loopforge/");
-    assertStringIncludes(Deno.readTextFileSync(`${root}/.gitignore`), "/.omx/");
+    // Runtime excludes live in .git/info/exclude; an untracked LoopForge
+    // .gitignore at the root would block merges of branches that add one.
+    const excludes = Deno.readTextFileSync(`${root}/.git/info/exclude`);
+    assertStringIncludes(excludes, "/.loopforge/");
+    assertStringIncludes(excludes, "/.omx/");
+    assertThrows(() => Deno.statSync(`${root}/.gitignore`));
   } finally {
     store.close();
     Deno.removeSync(root, { recursive: true });

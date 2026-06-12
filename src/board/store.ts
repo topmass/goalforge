@@ -1839,20 +1839,45 @@ function ensurePrompts(root: string): void {
   }
 }
 
+// Runtime dirs are excluded via .git/info/exclude, never .gitignore: an
+// untracked LoopForge-written .gitignore at the root blocks any merge whose
+// branch adds its own .gitignore (git refuses to overwrite untracked files).
 function ensureGitignore(root: string): void {
-  const target = path.join(root, ".gitignore");
+  const gitPath = path.join(root, ".git");
+  let gitDir: string;
+  try {
+    const stat = Deno.statSync(gitPath);
+    if (stat.isDirectory) {
+      gitDir = gitPath;
+    } else {
+      const pointer = Deno.readTextFileSync(gitPath).match(/^gitdir:\s*(.+)$/m);
+      if (!pointer) {
+        return;
+      }
+      gitDir = path.isAbsolute(pointer[1].trim())
+        ? pointer[1].trim()
+        : path.join(root, pointer[1].trim());
+    }
+  } catch {
+    return;
+  }
+  const target = path.join(gitDir, "info", "exclude");
   let current = "";
   try {
     current = Deno.readTextFileSync(target);
   } catch {
     current = "";
   }
-
   const required = [`/${runtimeDirName(root)}/`, "/.omx/"];
   const additions = required.filter((entry) => !current.split(/\r?\n/).includes(entry));
   if (additions.length) {
-    const prefix = current && !current.endsWith("\n") ? "\n" : "";
-    Deno.writeTextFileSync(target, `${current}${prefix}${additions.join("\n")}\n`);
+    try {
+      Deno.mkdirSync(path.join(gitDir, "info"), { recursive: true });
+      const prefix = current && !current.endsWith("\n") ? "\n" : "";
+      Deno.writeTextFileSync(target, `${current}${prefix}${additions.join("\n")}\n`);
+    } catch {
+      // Excludes are best effort; a read-only .git never blocks init.
+    }
   }
 }
 

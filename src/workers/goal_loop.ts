@@ -231,7 +231,26 @@ export class GoalLoopRunner {
       );
       return this.finish(goalId, iterations, "held", prompt);
     }
-    const output = await gitMergeBranch(this.root, branchName);
+    let output: string;
+    try {
+      output = await gitMergeBranch(this.root, branchName);
+    } catch (error) {
+      // The work is done and proven; a merge conflict parks it instead of
+      // crashing the loop. Restarting the hold task retries the merge.
+      const message = error instanceof Error ? error.message : String(error);
+      const prompt = [
+        `Loop work is complete and win conditions pass, but merging ${branchName} failed:`,
+        message.slice(0, 400),
+        "Resolve the project root (the loop branch is intact), then restart this task to merge.",
+      ].join("\n");
+      const holdTask = this.store.createLoopMergeHoldTask(goalId, branchName, prompt, evidence);
+      this.emitEvent(
+        goalId,
+        "hold",
+        `Merge failed; parked as ${holdTask.id}. ${message.slice(0, 160)}`,
+      );
+      return this.finish(goalId, iterations, "held", prompt);
+    }
     this.emitEvent(goalId, "merge", output.trim() || `Merged ${branchName}.`);
     // Settle any relay-intake tasks the goal carried; the loop's merge did the
     // work, and a closed goal must not leave dispatchable strays behind.
