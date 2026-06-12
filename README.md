@@ -66,12 +66,13 @@ actually pass. Attended sessions hold the merge behind your manual-verification 
 timed runs merge on a tagged baseline.
 
 ```bash
-loopforge loop GOAL-1                 # attended: you gate the merge
-loopforge loop GOAL-1 --hours 4       # unattended: merge on green probes
+loopforge loop "add a dark mode toggle with tests"   # one step: plan it, then loop it
+loopforge loop GOAL-1 --hours 4                      # unattended: merge on green probes
+loopforge loop GOAL-1                                # attended: you gate the merge
 ```
 
-In the TUI, select any task of a goal and press the **Loop Goal** button; the agent's plan
-items appear on the board as they're worked.
+In the TUI, press **Loop New** and describe the goal (or select a task of an existing goal and
+press **Loop Goal**); the agent's plan items appear on the board as they're worked.
 
 ## Let it run overnight
 

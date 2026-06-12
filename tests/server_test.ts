@@ -495,7 +495,7 @@ interface BoardResponse {
 
 class TestCodexClient implements CodexClient {
   constructor(
-    private readonly onEvent: (
+    protected readonly onEvent: (
       event: {
         taskId: string | null;
         runId: string | null;
@@ -813,6 +813,64 @@ Deno.test("server runs a goal loop in the background until the goal closes", asy
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error("Goal loop did not close the goal through the server endpoint.");
+  } finally {
+    server.shutdown();
+    await server.finished.catch(() => {});
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
+});
+
+class OneStepLoopStubClient extends TestCodexClient {
+  override async runTurn(session: CodexSession, input: CodexTurnInput): Promise<CodexTurnResult> {
+    if (/: loop \d+$/.test(input.title)) {
+      await Deno.writeTextFile(
+        `${session.cwd}/LOOP_PLAN.md`,
+        "# Plan\n- [x] Ship the gizmo -- wrote gizmo.txt\n",
+      );
+      await Deno.writeTextFile(`${session.cwd}/gizmo.txt`, "gizmo\n");
+      this.onEvent({
+        taskId: null,
+        runId: null,
+        role: "codex",
+        kind: "agent",
+        message: "LOOP_COMPLETE",
+      });
+      return {
+        threadId: session.threadId,
+        turnId: "loop-turn",
+        status: "completed",
+        completed: true,
+      };
+    }
+    return await super.runTurn(session, input);
+  }
+}
+
+Deno.test("one-step goal loop plans from text and loops it to a merged close", async () => {
+  const root = Deno.makeTempDirSync();
+  await git(root, ["init", "-b", "main"]);
+  await git(root, ["commit", "--allow-empty", "-m", "seed"]);
+  const port = 49933 + Math.floor(Math.random() * 300);
+  const server = startServer(root, port, {
+    createCodexClient: (onEvent) => new OneStepLoopStubClient(onEvent),
+  });
+  try {
+    const start = await fetch(`${server.url}/api/goals/loop`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "Ship the gizmo", hours: 1 }),
+    });
+    assertEquals(start.status, 201);
+    const { goalId } = await start.json();
+    for (let index = 0; index < 120; index++) {
+      const board = await fetch(`${server.url}/api/board`).then((response) => response.json());
+      if (board.goals.find((g: { id: string }) => g.id === goalId)?.status === "closed") {
+        assertEquals(await Deno.readTextFile(`${root}/gizmo.txt`), "gizmo\n");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("One-step goal loop did not close the goal.");
   } finally {
     server.shutdown();
     await server.finished.catch(() => {});

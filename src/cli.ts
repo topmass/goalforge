@@ -453,18 +453,40 @@ async function loopCommand(args: string[]): Promise<void> {
   }
   const iterIndex = args.indexOf("--iterations");
   const maxIterations = iterIndex >= 0 ? Number(args[iterIndex + 1]) : undefined;
-  const goalId = args.find((arg, index) =>
+  const positional = args.filter((arg, index) =>
     !arg.startsWith("-") &&
     (hoursIndex < 0 || index !== hoursIndex + 1) &&
     (iterIndex < 0 || index !== iterIndex + 1)
   );
-  if (!goalId) {
-    throw new Error("Usage: loopforge loop GOAL-N [--hours H] [--iterations N]");
+  if (!positional.length) {
+    throw new Error('Usage: loopforge loop <GOAL-N | "goal text"> [--hours H] [--iterations N]');
   }
   const store = new BoardStore(root);
   try {
     store.initProject();
     await ensureGitRepository(root);
+    let goalId: string;
+    if (positional.length === 1 && /^goal-\d+$/i.test(positional[0])) {
+      goalId = positional[0].toUpperCase();
+    } else {
+      // One step: plain text plans the goal, then the loop starts on it.
+      const text = positional.join(" ").trim();
+      const planner = new GoalPlanner(root, {
+        projectMemory: buildProjectMemory(store),
+        onEvent: (event) => {
+          if (event.message.trim()) {
+            console.log(`[compiler] ${event.kind} ${event.message}`);
+          }
+        },
+      });
+      const plan = await planner.planGoal(text);
+      const created = store.createGoalWithTasks(text, plan.tasks, {
+        completionContract: plan.completionContract,
+        probes: plan.probes,
+      });
+      goalId = created.goal.id;
+      console.log(`${goalId} compiled; starting the goal loop.`);
+    }
     const runner = new GoalLoopRunner(root, store, {
       hours,
       maxIterations: maxIterations && Number.isInteger(maxIterations) && maxIterations > 0
@@ -475,7 +497,7 @@ async function loopCommand(args: string[]): Promise<void> {
         console.log(`[${event.role}:${task}] ${event.kind} ${event.message}`);
       },
     });
-    const report = await runner.run(goalId.toUpperCase());
+    const report = await runner.run(goalId);
     console.log("");
     console.log(
       `Loop ${report.outcome} after ${report.iterations} iteration${

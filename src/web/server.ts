@@ -549,6 +549,53 @@ export function startServer(
           return json({ idea, ...result }, 201);
         }
 
+        if (url.pathname === "/api/goals/loop" && request.method === "POST") {
+          if (goalLoopRunning) {
+            return json({ error: "A goal loop is already running." }, 409);
+          }
+          const body = await readJson<{ text?: string; hours?: number; iterations?: number }>(
+            request,
+          );
+          const text = body.text?.trim() ?? "";
+          if (!text) {
+            return json({ error: "Goal text is required." }, 400);
+          }
+          const planner = new GoalPlanner(normalizedRoot, {
+            projectMemory: buildProjectMemory(store),
+            createCodexClient: options.createCodexClient,
+            onEvent: (event) => {
+              const activity = store.appendAgentEvent(event);
+              broadcastActivity(activity);
+            },
+          });
+          const plan = await planner.planGoal(text);
+          const created = store.createGoalWithTasks(text, plan.tasks, {
+            completionContract: plan.completionContract,
+            probes: plan.probes,
+          });
+          broadcastBoard();
+          goalLoopRunning = true;
+          queueMicrotask(() => {
+            const runner = new GoalLoopRunner(normalizedRoot, store, {
+              hours: typeof body.hours === "number" && body.hours > 0 ? body.hours : undefined,
+              maxIterations: typeof body.iterations === "number" && body.iterations > 0
+                ? Math.floor(body.iterations)
+                : undefined,
+              onEvent: broadcastActivity,
+              createCodexClient: options.createCodexClient,
+            });
+            runner.run(created.goal.id).then(() => {
+              goalLoopRunning = false;
+              broadcastBoard();
+            }).catch((error) => {
+              goalLoopRunning = false;
+              const message = error instanceof Error ? error.message : String(error);
+              broadcast("error", { message });
+            });
+          });
+          return json({ ok: true, goalId: created.goal.id, running: true }, 201);
+        }
+
         const loopMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/loop$/);
         if (loopMatch && request.method === "POST") {
           if (goalLoopRunning) {

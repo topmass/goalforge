@@ -158,7 +158,7 @@ interface AppState {
   selectedIdeaId: string | null;
   frame: number;
   notice: string;
-  promptMode: "build-goal" | "goal" | "task" | "steer" | "reset-main" | null;
+  promptMode: "build-goal" | "loop-goal" | "goal" | "task" | "steer" | "reset-main" | null;
   input: string;
   busy: boolean;
   flowVisible: boolean;
@@ -443,6 +443,8 @@ async function handlePromptInput(
     state.input = "";
     if (mode === "build-goal" && value) {
       await buildGoal(value);
+    } else if (mode === "loop-goal" && value) {
+      await loopNewGoal(value);
     } else if (mode === "goal" && value) {
       await planGoal(value);
     } else if (mode === "task" && value) {
@@ -459,6 +461,19 @@ async function handlePromptInput(
   if (key.length === 1 && key >= " ") {
     appendPromptText(key);
   }
+}
+
+async function loopNewGoal(text: string): Promise<void> {
+  await runAction(
+    "Loop new goal",
+    () => post("/api/goals/loop", { text }),
+    {
+      complete: (result) => {
+        const goalId = (result as { goalId?: string })?.goalId ?? "the new goal";
+        return `Goal loop started on ${goalId}: one agent owns it; its plan mirrors here as it works.`;
+      },
+    },
+  );
 }
 
 function appendPromptText(text: string): void {
@@ -1011,6 +1026,10 @@ function createFooterActionRows(): FooterAction[][] {
   const taskAction = idea ? null : selectedTaskFooterAction();
   const primary: FooterAction[] = [
     { label: "Build Goal", run: () => openPrompt("build-goal", "Describe the goal to build now.") },
+    {
+      label: "Loop New",
+      run: () => openPrompt("loop-goal", "Describe the goal; one agent loops it to done."),
+    },
     { label: "New Task", run: () => openPrompt("task", "Type a task title.") },
     { label: "Plan Only", run: () => openPrompt("goal", "Describe the goal to compile.") },
     ...(taskAction ? [taskAction] : []),
