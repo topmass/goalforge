@@ -454,7 +454,9 @@ async function loopCommand(args: string[]): Promise<void> {
   const iterIndex = args.indexOf("--iterations");
   const maxIterations = iterIndex >= 0 ? Number(args[iterIndex + 1]) : undefined;
   const goalId = args.find((arg, index) =>
-    !arg.startsWith("-") && index !== hoursIndex + 1 && index !== iterIndex + 1
+    !arg.startsWith("-") &&
+    (hoursIndex < 0 || index !== hoursIndex + 1) &&
+    (iterIndex < 0 || index !== iterIndex + 1)
   );
   if (!goalId) {
     throw new Error("Usage: loopforge loop GOAL-N [--hours H] [--iterations N]");
@@ -504,7 +506,9 @@ async function pursueCommand(args: string[]): Promise<void> {
   const all = args.includes("--all");
   const goalId = args.find((arg, index) =>
     !arg.startsWith("-") &&
-    index !== hoursIndex + 1 && index !== iterIndex + 1 && index !== escalateIndex + 1
+    (hoursIndex < 0 || index !== hoursIndex + 1) &&
+    (iterIndex < 0 || index !== iterIndex + 1) &&
+    (escalateIndex < 0 || index !== escalateIndex + 1)
   );
   const store = new BoardStore(root);
   try {
