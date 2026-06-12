@@ -947,7 +947,7 @@ export class BoardStore {
     const events: ActivityEvent[] = [];
     const open = (this.db.prepare(
       "SELECT * FROM tasks WHERE goal_id = ? AND kind != 'loop' AND status != 'done'",
-    ).all() as SqlRow[]).map(taskFromRow);
+    ).all(goalId) as SqlRow[]).map(taskFromRow);
     const now = timestamp();
     for (const task of open) {
       this.db.prepare(

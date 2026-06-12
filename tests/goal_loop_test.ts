@@ -126,6 +126,8 @@ Deno.test("goal loop plans, mirrors the checklist, passes probes, and merges una
     assertEquals(await Deno.readTextFile(`${root}/widget.txt`), "widget\n");
     assertEquals(store.getGoal(goal.id).status, "closed");
     assertStringIncludes(store.getGoal(goal.id).closureSummary, "1/1");
+    // The relay intake task is settled, never left dispatchable under a closed goal.
+    assertEquals(store.getTask("TASK-1").status, "done");
     assert(events.some((line) => line.includes("loop/merge")));
   } finally {
     store.close();
